@@ -21,20 +21,15 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.ListView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLEncoder;
-
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
@@ -47,7 +42,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private SeekBar seekBar;
     private TextView textView2;
     private TextView textView;
-    private TextView lyricText;
+    private ListView lyricListView;
+    private LyricAdapter lyricAdapter;
+    private List<LrcLine> lrcLines = new ArrayList<>();
+    private int currentLrcIndex = -1;
     private MusicService musicService;
     private TabledatabaseHelper dbHelper;
     private String CurrentTitle = "CurrentTitle";
@@ -80,8 +78,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         textView2 = (TextView) findViewById(R.id.textView2);
         textView = (TextView) findViewById(R.id.textView);
-        lyricText = (TextView) findViewById(R.id.lyricText);
-        lyricText.setVisibility(View.GONE);
+        lyricListView = (ListView) findViewById(R.id.lyricListView);
+        lyricAdapter = new LyricAdapter(this, lrcLines);
+        lyricListView.setAdapter(lyricAdapter);
         play = (Button) findViewById(R.id.play);
         seekBar = (SeekBar) findViewById(R.id.seekBar);
         localmusic = (Button) findViewById(R.id.localmusic);
@@ -131,6 +130,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                         bindService(eiintent, conn, Service.BIND_AUTO_CREATE);
                         startService(eiintent);
                     }
+                    // 拖拽进度条时歌词同步跳转
+                    syncLyricHighlight(progress);
                 }
             }
         });
@@ -299,7 +300,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 seekBar.setMax(intent.getIntExtra("seekbarmaxprogress", 100));
 
             } else if (intent.getAction().equals("seekbarprogress")) {
-                seekBar.setProgress(intent.getIntExtra("seekbarprogress", 0));
+                int progress = intent.getIntExtra("seekbarprogress", 0);
+                seekBar.setProgress(progress);
+                syncLyricHighlight(progress);
 
             } else if (intent.getAction().equals("pauseimage")) {
                 play.setBackgroundResource(R.drawable.pause);
@@ -380,99 +383,156 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     };
 
+    // ==================== 歌词加载 & 同步 ====================
+
+    /**
+     * 切歌时触发：先尝试获取 LRC 同步歌词，失败则降级为纯文本
+     */
     private void loadLyrics(String title, String artist) {
         if (title == null || title.trim().length() == 0) {
-            lyricText.setVisibility(View.GONE);
+            showPlainLyrics("暂无歌词");
             return;
         }
-        lyricText.setVisibility(View.GONE);
-        new LyricsTask().execute(title, artist == null ? "" : artist);
+        showPlainLyrics("正在加载歌词...");
+        new LyricsLoadTask().execute(title, artist == null ? "" : artist);
     }
 
-    private class LyricsTask extends AsyncTask<String, Void, String> {
+    private class LyricsLoadTask extends AsyncTask<String, Void, String> {
+        private boolean isLrc;
+
         @Override
         protected String doInBackground(String... params) {
-            HttpURLConnection connection = null;
-            BufferedReader reader = null;
-            try {
-                String title = params[0];
-                String artist = params.length > 1 ? params[1] : "";
-                String urlText = "https://lrclib.net/api/search?track_name="
-                        + URLEncoder.encode(title, "UTF-8");
-                if (artist != null && artist.trim().length() > 0 && !artist.equals("<unknown>")) {
-                    urlText += "&artist_name=" + URLEncoder.encode(artist, "UTF-8");
-                }
+            String title = params[0];
+            String artist = params.length > 1 ? params[1] : "";
 
-                URL url = new URL(urlText);
-                connection = (HttpURLConnection) url.openConnection();
-                connection.setRequestMethod("GET");
-                connection.setRequestProperty("User-Agent", "MusicPlayer5.0 Android Demo");
-                connection.setConnectTimeout(8000);
-                connection.setReadTimeout(8000);
-
-                InputStream inputStream = connection.getInputStream();
-                reader = new BufferedReader(new InputStreamReader(inputStream));
-                StringBuilder builder = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    builder.append(line);
-                }
-
-                JSONArray results = new JSONArray(builder.toString());
-                if (results.length() == 0) {
-                    return "";
-                }
-
-                JSONObject item = results.getJSONObject(0);
-                String lyrics = item.optString("plainLyrics", "");
-                if (lyrics.length() == 0) {
-                    lyrics = item.optString("syncedLyrics", "");
-                }
-                return cleanLyrics(lyrics);
-            } catch (Exception e) {
-                return "";
-            } finally {
-                try {
-                    if (reader != null) {
-                        reader.close();
-                    }
-                } catch (Exception ignored) {
-                }
-                if (connection != null) {
-                    connection.disconnect();
-                }
+            // 第一步：尝试获取带时间戳的 LRC（优先，用于同步高亮）
+            String lrc = LyricsFetcher.fetchLrcRaw(artist, title);
+            if (lrc != null && !lrc.isEmpty()) {
+                isLrc = true;
+                return lrc;
             }
+
+            // 第二步：降级为纯文本歌词（无时间戳，仅展示）
+            isLrc = false;
+            return LyricsFetcher.fetchLyrics(artist, title);
         }
 
         @Override
-        protected void onPostExecute(String lyrics) {
-            if (lyrics == null || lyrics.trim().length() == 0) {
-                lyricText.setVisibility(View.GONE);
+        protected void onPostExecute(String result) {
+            if (result == null || result.trim().isEmpty()) {
+                showPlainLyrics("暂无歌词");
+                return;
+            }
+
+            if (isLrc) {
+                // 带时间戳的 LRC → 解析并启用同步
+                lrcLines = parseLrc(result);
+                currentLrcIndex = -1;
+                lyricAdapter.clear();
+                lyricAdapter.addAll(lrcLines);
+                lyricAdapter.notifyDataSetChanged();
+                if (lrcLines.isEmpty()) {
+                    showPlainLyrics("暂无歌词");
+                }
             } else {
-                lyricText.setText(lyrics);
-                lyricText.setVisibility(View.VISIBLE);
+                // 纯文本 → 逐行显示，无高亮
+                showPlainLyrics(result);
             }
         }
     }
 
-    private String cleanLyrics(String lyrics) {
-        if (lyrics == null) {
-            return "";
-        }
-        String[] lines = lyrics.split("\n");
-        StringBuilder builder = new StringBuilder();
-        int count = 0;
-        for (String line : lines) {
-            String text = line.replaceAll("\\[\\d{2}:\\d{2}\\.\\d{2,3}\\]", "").trim();
-            if (text.length() > 0) {
-                builder.append(text).append("\n");
-                count++;
+    /**
+     * 纯文本歌词展示（无时间戳，降级方案）
+     */
+    private void showPlainLyrics(String text) {
+        lrcLines.clear();
+        currentLrcIndex = -1;
+        if (text != null && !text.trim().isEmpty()) {
+            String[] lines = text.split("\n");
+            for (String line : lines) {
+                if (line.trim().length() > 0) {
+                    lrcLines.add(new LrcLine(0, line.trim()));
+                }
             }
-            if (count >= 6) {
-                break;
+            lyricAdapter.clear();
+            lyricAdapter.addAll(lrcLines);
+        } else {
+            lyricAdapter.clear();
+        }
+        lyricAdapter.clearHighlight();
+        lyricAdapter.notifyDataSetChanged();
+    }
+
+    /**
+     * 解析原始 LRC 文本为 LrcLine 列表，按时间戳排序
+     */
+    private List<LrcLine> parseLrc(String rawLrc) {
+        List<LrcLine> lines = new ArrayList<>();
+        if (rawLrc == null || rawLrc.isEmpty()) return lines;
+
+        String[] rawLines = rawLrc.split("\n");
+        Pattern p = Pattern.compile("\\[(\\d{2}):(\\d{2})[.:](\\d{2,3})\\]");
+
+        for (String line : rawLines) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty()) continue;
+
+            Matcher m = p.matcher(trimmed);
+            List<Long> times = new ArrayList<>();
+
+            while (m.find()) {
+                int min = Integer.parseInt(m.group(1));
+                int sec = Integer.parseInt(m.group(2));
+                String msStr = m.group(3);
+                int ms = Integer.parseInt(msStr);
+                if (msStr.length() == 2) ms *= 10; // [00:12.34] → 340ms
+                times.add((min * 60L + sec) * 1000 + ms);
+            }
+
+            String text = trimmed.replaceAll("\\[\\d{2}:\\d{2}[.:]\\d{2,3}\\]", "").trim();
+            if (text.isEmpty()) continue;
+
+            for (Long time : times) {
+                lines.add(new LrcLine(time, text));
             }
         }
-        return builder.toString().trim();
+
+        Collections.sort(lines, (a, b) -> Long.compare(a.getTime(), b.getTime()));
+        return lines;
+    }
+
+    /**
+     * 根据当前播放位置（毫秒），二分查找应高亮的歌词行，并自动滚动
+     */
+    private void syncLyricHighlight(int positionMs) {
+        if (lrcLines.isEmpty()) return;
+
+        // 二分查找：找到时间戳 ≤ positionMs 的最大行
+        int lo = 0, hi = lrcLines.size() - 1, best = -1;
+        while (lo <= hi) {
+            int mid = (lo + hi) / 2;
+            if (lrcLines.get(mid).getTime() <= positionMs) {
+                best = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+
+        if (best != currentLrcIndex) {
+            currentLrcIndex = best;
+            lyricAdapter.setCurrentLine(currentLrcIndex);
+            scrollToCurrentLine(currentLrcIndex);
+        }
+    }
+
+    /**
+     * 将 ListView 滚动到当前歌词行（保持可见区域的 1/3 处）
+     */
+    private void scrollToCurrentLine(int index) {
+        if (index < 0 || lyricListView == null) return;
+        // smoothScrollToPosition 会把目标行滚到可见区域的顶部附近
+        lyricListView.smoothScrollToPosition(index);
     }
 
     @Override

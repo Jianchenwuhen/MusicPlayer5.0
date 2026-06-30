@@ -1,7 +1,6 @@
 package com.example.musicplayer50;
 
 import android.Manifest;
-import android.app.Activity;
 import android.app.Service;
 import android.content.ComponentName;
 import android.content.ContentValues;
@@ -10,32 +9,26 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.database.ContentObserver;
 import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
-import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
+import android.provider.MediaStore;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
-import android.view.ContextMenu;
-import android.view.GestureDetector;
-import android.view.MenuItem;
-import android.view.MotionEvent;
 import android.view.View;
-import android.view.Window;
 import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.ListView;
-import android.widget.TextView;
-import android.widget.Toast;
 
+import java.io.File;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
 
 /**
  * Created by 惠中 on 2016/12/12.
@@ -61,6 +54,8 @@ public class LocalMusicActivity extends AppCompatActivity {
             Manifest.permission.READ_EXTERNAL_STORAGE,
             Manifest.permission.WRITE_EXTERNAL_STORAGE,};
     private List<Music> musics;
+    private ContentObserver mediaObserver;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -99,11 +94,26 @@ public class LocalMusicActivity extends AppCompatActivity {
 
         dbHelper = new TabledatabaseHelper(this,"login.db",null,1);
 
+        // 首次加载音乐列表
+        loadMusicList();
 
-        Findmusic findmusic = new Findmusic();
-        musics = findmusic.getmusics(LocalMusicActivity.this.getContentResolver());   //找到资源，music型组
-        adapter = new MusicAdapter(LocalMusicActivity.this,R.layout.musicitem,musics); //新建想对应的适配器
-        listView.setAdapter(adapter);
+        // 注册 ContentObserver：系统媒体库一有变化就自动刷新列表
+        mediaObserver = new ContentObserver(new Handler()) {
+            @Override
+            public void onChange(boolean selfChange) {
+                super.onChange(selfChange);
+                Log.e("huizhong", "MediaStore 发生变化，自动刷新本地音乐列表");
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        loadMusicList();
+                    }
+                });
+            }
+        };
+        getContentResolver().registerContentObserver(
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                true, mediaObserver);
 
         listView.setOnItemClickListener (new AdapterView.OnItemClickListener() {
             @Override
@@ -154,9 +164,61 @@ public class LocalMusicActivity extends AppCompatActivity {
         });
     }
     @Override
+    protected void onResume() {
+        super.onResume();
+        // 每次回到此界面时重新查询（覆盖从别的 Activity 返回的场景）
+        loadMusicList();
+        // 主动触发系统扫描标准音乐目录，让新拖入的 MP3 尽快被 MediaStore 收录
+        triggerMediaScan();
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (mediaObserver != null) {
+            getContentResolver().unregisterContentObserver(mediaObserver);
+        }
         unbindService(conn);
+    }
+
+    /**
+     * 主动通知系统扫描 Music / Download 目录中的新媒体文件
+     */
+    private void triggerMediaScan() {
+        try {
+            String[] scanDirs = {
+                    Environment.getExternalStorageDirectory().getPath() + "/Music",
+                    Environment.getExternalStorageDirectory().getPath() + "/Download",
+                    Environment.getExternalStorageDirectory().getPath() + "/Alarms",
+                    Environment.getExternalStorageDirectory().getPath() + "/Notifications",
+            };
+            for (String dir : scanDirs) {
+                File file = new File(dir);
+                if (file.exists() && file.isDirectory()) {
+                    Intent intent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+                    intent.setData(Uri.fromFile(file));
+                    sendBroadcast(intent);
+                }
+            }
+        } catch (Exception e) {
+            Log.e("huizhong", "触发媒体扫描失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 从 MediaStore 重新查询本地音乐，刷新 ListView
+     */
+    private void loadMusicList() {
+        Findmusic findmusic = new Findmusic();
+        musics = findmusic.getmusics(getContentResolver());
+        if (adapter == null) {
+            adapter = new MusicAdapter(LocalMusicActivity.this, R.layout.musicitem, musics);
+            listView.setAdapter(adapter);
+        } else {
+            adapter.clear();
+            adapter.addAll(musics);
+            adapter.notifyDataSetChanged();
+        }
     }
     public static Intent createExplicitFromImplicitIntent(Context context, Intent implicitIntent) {
         // Retrieve all services that can match the given intent
