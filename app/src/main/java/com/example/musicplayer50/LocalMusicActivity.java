@@ -2,10 +2,12 @@ package com.example.musicplayer50;
 
 import android.Manifest;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -55,6 +57,15 @@ public class LocalMusicActivity extends AppCompatActivity {
             Manifest.permission.WRITE_EXTERNAL_STORAGE,};
     private List<Music> musics;
     private ContentObserver mediaObserver;
+
+    // BroadcastReceiver：接收播放列表变化广播，联动刷新本地列表
+    private BroadcastReceiver listChangeReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            Log.e("huizhong", "LocalMusicActivity 收到播放列表变化广播");
+            loadMusicList();
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -114,6 +125,10 @@ public class LocalMusicActivity extends AppCompatActivity {
         getContentResolver().registerContentObserver(
                 MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
                 true, mediaObserver);
+
+        // 注册播放列表变化广播接收器
+        IntentFilter listFilter = new IntentFilter(PlaylistProvider.ACTION_PLAYLIST_CHANGED);
+        registerReceiver(listChangeReceiver, listFilter);
 
         listView.setOnItemClickListener (new AdapterView.OnItemClickListener() {
             @Override
@@ -175,6 +190,7 @@ public class LocalMusicActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        unregisterReceiver(listChangeReceiver);
         if (mediaObserver != null) {
             getContentResolver().unregisterContentObserver(mediaObserver);
         }

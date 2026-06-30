@@ -421,6 +421,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         protected void onPostExecute(String result) {
             if (result == null || result.trim().isEmpty()) {
                 showPlainLyrics("暂无歌词");
+                sendBroadcast(new Intent("lyricsLoaded"));
                 return;
             }
 
@@ -438,6 +439,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 // 纯文本 → 逐行显示，无高亮
                 showPlainLyrics(result);
             }
+            // 发送歌词加载完成广播（供其他组件监听）
+            sendBroadcast(new Intent("lyricsLoaded"));
         }
     }
 

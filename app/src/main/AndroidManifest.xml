@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
     <application
         android:allowBackup="true"
@@ -35,6 +36,10 @@
             android:name=".OnlineMusicActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".PlayerStatusActivity"
+            android:exported="false" />
+
         <provider
             android:name=".PlaylistProvider"
             android:authorities="com.example.musicplayer50.playlistprovider"
@@ -43,7 +48,8 @@
         <service
             android:name=".MusicService"
             android:enabled="true"
-            android:exported="false">
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback">
             <intent-filter>
                 <action android:name="startnew" />
                 <action android:name="changed" />

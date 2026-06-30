@@ -1,11 +1,19 @@
 package com.example.musicplayer50;
 
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.database.Cursor;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
 import android.os.Binder;
+import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
@@ -16,19 +24,30 @@ import android.widget.Toast;
 import java.lang.ref.WeakReference;
 
 /**
- * 后台音乐播放服务
- * - 使用 prepareAsync 避免主线程阻塞
- * - 设置 AudioAttributes 保障音质
- * - WakeLock 防止 CPU 休眠导致断流
+ * 后台音乐播放服务（前台 Service + 通知栏媒体控制）
  */
 public class MusicService extends Service {
+
+    private static final String CHANNEL_ID = "music_playback";
+    private static final int NOTIFICATION_ID = 1;
+
+    // 通知栏按钮 action
+    private static final String ACTION_NOTIFY_PLAY = "com.example.musicplayer50.NOTIFY_PLAY";
+    private static final String ACTION_NOTIFY_NEXT = "com.example.musicplayer50.NOTIFY_NEXT";
+    private static final String ACTION_NOTIFY_PREV = "com.example.musicplayer50.NOTIFY_PREV";
 
     private MediaPlayer mediaPlayer;
     private MyBinder myBinder;
     private PowerManager.WakeLock wakeLock;
 
-    private static final int SET_SEEKBAR_MAX = 3;
+    // 静态变量：供其他 Activity 查询当前播放状态
+    public static String currentTitle = "";
+    public static String currentArtist = "";
+    public static String currentUrl = "";
+    public static boolean isPlaying = false;
+
     private static final int UPDATE_PROGRESS = 1;
+    private static final int SET_SEEKBAR_MAX = 3;
 
     public class MyBinder extends Binder {
         public MusicService getService() {
@@ -36,31 +55,24 @@ public class MusicService extends Service {
         }
     }
 
-    // 静态内部 Handler 避免内存泄漏
     private static class SafeHandler extends Handler {
         private final WeakReference<MusicService> ref;
-
-        SafeHandler(MusicService service) {
-            this.ref = new WeakReference<>(service);
-        }
+        SafeHandler(MusicService service) { this.ref = new WeakReference<>(service); }
 
         @Override
         public void handleMessage(Message msg) {
             MusicService service = ref.get();
             if (service == null || service.mediaPlayer == null) return;
-
             switch (msg.what) {
                 case UPDATE_PROGRESS:
                     Intent intent = new Intent("seekbarprogress");
-                    intent.putExtra("seekbarprogress",
-                            service.mediaPlayer.getCurrentPosition());
+                    intent.putExtra("seekbarprogress", service.mediaPlayer.getCurrentPosition());
                     service.sendBroadcast(intent);
                     sendEmptyMessageDelayed(UPDATE_PROGRESS, 500);
                     break;
                 case SET_SEEKBAR_MAX:
                     intent = new Intent("seekbarmaxprogress");
-                    intent.putExtra("seekbarmaxprogress",
-                            service.mediaPlayer.getDuration());
+                    intent.putExtra("seekbarmaxprogress", service.mediaPlayer.getDuration());
                     service.sendBroadcast(intent);
                     break;
             }
@@ -69,69 +81,74 @@ public class MusicService extends Service {
 
     private SafeHandler handler;
 
-    public MusicService() {
-    }
+    // 接收通知栏按钮点击
+    private BroadcastReceiver notifyReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            if (ACTION_NOTIFY_PLAY.equals(action)) {
+                start(); // 播放/暂停
+            } else if (ACTION_NOTIFY_NEXT.equals(action)) {
+                playAdjacent(+1);
+            } else if (ACTION_NOTIFY_PREV.equals(action)) {
+                playAdjacent(-1);
+            }
+        }
+    };
 
     @Override
     public void onCreate() {
         super.onCreate();
         handler = new SafeHandler(this);
         initMediaPlayer();
+        createNotificationChannel();
+        registerReceiver(notifyReceiver, new IntentFilter(ACTION_NOTIFY_PLAY));
+        registerReceiver(notifyReceiver, new IntentFilter(ACTION_NOTIFY_NEXT));
+        registerReceiver(notifyReceiver, new IntentFilter(ACTION_NOTIFY_PREV));
     }
 
-    /**
-     * 初始化 MediaPlayer：设置音频属性 + WakeLock
-     */
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL_ID, "音乐播放", NotificationManager.IMPORTANCE_LOW);
+            channel.setDescription("音乐播放控制");
+            channel.setShowBadge(false);
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null) nm.createNotificationChannel(channel);
+        }
+    }
+
     private void initMediaPlayer() {
-        if (mediaPlayer != null) {
-            mediaPlayer.release();
-        }
+        if (mediaPlayer != null) mediaPlayer.release();
         mediaPlayer = new MediaPlayer();
-
-        // 设置为音乐流，系统会按音乐场景优化音频路由和 EQ
         mediaPlayer.setAudioStreamType(android.media.AudioManager.STREAM_MUSIC);
-
-        // Android 8.0+ 推荐用 AudioAttributes
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            AudioAttributes attrs = new AudioAttributes.Builder()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            mediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
                     .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .build();
-            mediaPlayer.setAudioAttributes(attrs);
+                    .setUsage(AudioAttributes.USAGE_MEDIA).build());
         }
-
-        // 播放完成切下一首
         mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
             @Override
             public void onCompletion(MediaPlayer mp) {
-                Log.e("huizhong", "播放完成，广播 nextsong");
-                Intent intent = new Intent("nextsong");
-                sendBroadcast(intent);
+                Log.e("huizhong", "播放完成");
+                playAdjacent(+1);
             }
         });
     }
 
-    /**
-     * 获取 WakeLock 防止 CPU 休眠
-     */
     private void acquireWakeLock() {
         if (wakeLock == null) {
             PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
             if (pm != null) {
-                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
-                        "MusicPlayer::Wakelock");
+                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MusicPlayer::Wakelock");
                 wakeLock.setReferenceCounted(false);
             }
         }
-        if (wakeLock != null && !wakeLock.isHeld()) {
-            wakeLock.acquire();
-        }
+        if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
     }
 
     private void releaseWakeLock() {
-        if (wakeLock != null && wakeLock.isHeld()) {
-            wakeLock.release();
-        }
+        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
     }
 
     @Override
@@ -140,57 +157,47 @@ public class MusicService extends Service {
         return myBinder;
     }
 
-    /**
-     * 播放 / 暂停切换
-     */
     public void start() {
         if (mediaPlayer == null) return;
-
         if (mediaPlayer.isPlaying()) {
             mediaPlayer.pause();
             releaseWakeLock();
+            isPlaying = false;
             sendBroadcast(new Intent("pauseimage"));
         } else {
             mediaPlayer.start();
             acquireWakeLock();
+            isPlaying = true;
             sendBroadcast(new Intent("playimage"));
             handler.sendEmptyMessage(UPDATE_PROGRESS);
         }
+        updateNotification();
     }
 
-    /**
-     * 切歌：用 prepareAsync 异步准备，避免主线程阻塞导致音频卡顿
-     */
     public void startnew(String path) {
         try {
-            // 停止旧播放器并用 reset() 复用（比 release+new 高效）
             if (mediaPlayer != null) {
-                if (mediaPlayer.isPlaying()) {
-                    mediaPlayer.stop();
-                }
+                if (mediaPlayer.isPlaying()) mediaPlayer.stop();
                 mediaPlayer.reset();
             } else {
                 initMediaPlayer();
             }
-
             mediaPlayer.setDataSource(path);
-
-            // 关键修复：prepareAsync 不阻塞主线程
             mediaPlayer.prepareAsync();
             mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                 @Override
                 public void onPrepared(MediaPlayer mp) {
                     mp.start();
                     acquireWakeLock();
+                    isPlaying = true;
                     sendBroadcast(new Intent("playimage"));
                     handler.sendEmptyMessage(SET_SEEKBAR_MAX);
                     handler.sendEmptyMessage(UPDATE_PROGRESS);
+                    updateNotification();
                 }
             });
-
         } catch (Exception e) {
             Log.e("huizhong", "startnew 异常: " + e.getMessage());
-            e.printStackTrace();
         }
     }
 
@@ -199,20 +206,25 @@ public class MusicService extends Service {
         if (intent == null) return START_NOT_STICKY;
 
         if ("startnew".equals(intent.getAction())) {
-            String title = intent.getStringExtra("title");
-            String url = intent.getStringExtra("url");
-            String artist = intent.getStringExtra("artist");
+            currentTitle = intent.getStringExtra("title");
+            currentArtist = intent.getStringExtra("artist");
+            currentUrl = intent.getStringExtra("url");
+            if (currentTitle == null) currentTitle = "";
+            if (currentArtist == null) currentArtist = "";
+            if (currentUrl == null) currentUrl = "";
 
-            Toast.makeText(getApplicationContext(), title, Toast.LENGTH_SHORT).show();
-            Log.e("huizhong", "startnew: " + title);
+            Toast.makeText(getApplicationContext(), currentTitle, Toast.LENGTH_SHORT).show();
 
-            startnew(url);
+            // 先展示通知（满足 Android 8.0+ 前台 Service 5秒限制）
+            isPlaying = false;
+            startForeground(NOTIFICATION_ID, buildNotification());
 
-            // 通知主界面更新标题
+            startnew(currentUrl);
+
             Intent titleIntent = new Intent("gettitle");
-            titleIntent.putExtra("title", title);
-            titleIntent.putExtra("url", url);
-            titleIntent.putExtra("artist", artist);
+            titleIntent.putExtra("title", currentTitle);
+            titleIntent.putExtra("url", currentUrl);
+            titleIntent.putExtra("artist", currentArtist);
             sendBroadcast(titleIntent);
 
         } else if ("changed".equals(intent.getAction())) {
@@ -224,19 +236,112 @@ public class MusicService extends Service {
         return START_NOT_STICKY;
     }
 
+    // ==================== 通知栏 ====================
+
+    /**
+     * 构建/刷新通知，播放时显示为前台 Service
+     */
+    private void updateNotification() {
+        if (currentTitle.isEmpty()) return;
+        startForeground(NOTIFICATION_ID, buildNotification());
+    }
+
+    private Notification buildNotification() {
+        // 点击通知打开主界面
+        Intent openIntent = new Intent(this, MainActivity.class);
+        openIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent contentPI = PendingIntent.getActivity(this, 0, openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0));
+
+        // 播放/暂停按钮
+        Intent playIntent = new Intent(ACTION_NOTIFY_PLAY);
+        PendingIntent playPI = PendingIntent.getBroadcast(this, 0, playIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0));
+
+        // 下一首按钮
+        Intent nextIntent = new Intent(ACTION_NOTIFY_NEXT);
+        PendingIntent nextPI = PendingIntent.getBroadcast(this, 1, nextIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0));
+
+        // 上一首按钮
+        Intent prevIntent = new Intent(ACTION_NOTIFY_PREV);
+        PendingIntent prevPI = PendingIntent.getBroadcast(this, 2, prevIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0));
+
+        int playIcon = isPlaying ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play;
+
+        Notification.Builder builder;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            builder = new Notification.Builder(this, CHANNEL_ID);
+        } else {
+            builder = new Notification.Builder(this);
+        }
+
+        builder.setContentTitle(currentTitle)
+                .setContentText(currentArtist)
+                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setContentIntent(contentPI)
+                .setOngoing(isPlaying)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .addAction(android.R.drawable.ic_media_previous, "上一首", prevPI)
+                .addAction(playIcon, "播放/暂停", playPI)
+                .addAction(android.R.drawable.ic_media_next, "下一首", nextPI);
+
+        return builder.build();
+    }
+
+    // ==================== 上下首（从 Provider 查播放列表） ====================
+
+    private void playAdjacent(int direction) {
+        Cursor cursor = getContentResolver().query(
+                PlaylistContract.CONTENT_URI, null, null, null, null);
+        if (cursor == null || cursor.getCount() == 0) {
+            if (cursor != null) cursor.close();
+            // 播放列表为空，发广播让 Activity 处理
+            sendBroadcast(new Intent("nextsong"));
+            return;
+        }
+
+        int targetIndex = -1;
+        int count = cursor.getCount();
+        for (int i = 0; i < count; i++) {
+            cursor.moveToPosition(i);
+            String t = cursor.getString(cursor.getColumnIndexOrThrow("title"));
+            if (currentTitle.equals(t)) { targetIndex = i + direction; break; }
+        }
+
+        if (targetIndex < 0) targetIndex = count - 1;
+        if (targetIndex >= count) targetIndex = 0;
+
+        cursor.moveToPosition(targetIndex);
+        String url = cursor.getString(cursor.getColumnIndexOrThrow("url"));
+        String title = cursor.getString(cursor.getColumnIndexOrThrow("title"));
+        String artist = cursor.getString(cursor.getColumnIndexOrThrow("artist"));
+        cursor.close();
+
+        currentTitle = title;
+        currentArtist = artist;
+        currentUrl = url;
+        startnew(url);
+
+        Intent titleIntent = new Intent("gettitle");
+        titleIntent.putExtra("title", title);
+        titleIntent.putExtra("url", url);
+        titleIntent.putExtra("artist", artist);
+        sendBroadcast(titleIntent);
+    }
+
     @Override
     public void onDestroy() {
+        unregisterReceiver(notifyReceiver);
         releaseWakeLock();
         handler.removeCallbacksAndMessages(null);
-
+        stopForeground(true);
         if (mediaPlayer != null) {
-            if (mediaPlayer.isPlaying()) {
-                mediaPlayer.stop();
-            }
+            if (mediaPlayer.isPlaying()) mediaPlayer.stop();
             mediaPlayer.release();
             mediaPlayer = null;
         }
-
         super.onDestroy();
     }
 }
