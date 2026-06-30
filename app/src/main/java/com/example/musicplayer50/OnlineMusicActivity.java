@@ -16,8 +16,15 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
+import java.util.Random;
 
 public class OnlineMusicActivity extends AppCompatActivity {
+    private static final String[] SEARCH_WORDS = {
+            "pop", "rock", "jazz", "piano", "guitar",
+            "dance", "love", "summer", "classic", "hip hop"
+    };
+
     private TextView resultText;
 
     @Override
@@ -48,7 +55,9 @@ public class OnlineMusicActivity extends AppCompatActivity {
             BufferedReader reader = null;
 
             try {
-                URL url = new URL("https://itunes.apple.com/search?term=music&media=music&limit=5");
+                String keyword = SEARCH_WORDS[new Random().nextInt(SEARCH_WORDS.length)];
+                String encodedKeyword = URLEncoder.encode(keyword, "UTF-8");
+                URL url = new URL("https://itunes.apple.com/search?term=" + encodedKeyword + "&media=music&limit=5");
                 connection = (HttpURLConnection) url.openConnection();
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(8000);
@@ -65,7 +74,7 @@ public class OnlineMusicActivity extends AppCompatActivity {
                 JSONObject jsonObject = new JSONObject(builder.toString());
                 JSONArray results = jsonObject.getJSONArray("results");
                 StringBuilder recommendBuilder = new StringBuilder();
-                recommendBuilder.append("在线推荐歌曲：\n\n");
+                recommendBuilder.append("在线推荐歌曲：").append(keyword).append("\n\n");
 
                 for (int i = 0; i < results.length(); i++) {
                     JSONObject item = results.getJSONObject(i);
