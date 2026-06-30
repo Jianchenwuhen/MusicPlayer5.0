@@ -120,8 +120,8 @@ public class LocalMusicActivity extends AppCompatActivity {
                 if (cursor != null) {
                     for (int i = 0; i < cursor.getCount(); i++) {
                         cursor.moveToNext();
-                        Log.e("huizhong","当前游标title是："+cursor.getString(cursor.getColumnIndex("title")));
-                        if(title.equals(cursor.getString(cursor.getColumnIndex("title")))) {
+                        Log.e("huizhong","当前游标title是："+cursor.getString(cursor.getColumnIndexOrThrow("title")));
+                        if(title.equals(cursor.getString(cursor.getColumnIndexOrThrow("title")))) {
                             Log.e("huizhong","已经存在歌曲，不插入了" );
                             Exist = true;
                             break;

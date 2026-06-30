@@ -12,6 +12,7 @@ import android.content.pm.ResolveInfo;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.IBinder;
+import android.os.AsyncTask;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -22,6 +23,16 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.SeekBar;
 import android.widget.TextView;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
 
 import java.util.List;
 
@@ -36,6 +47,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private SeekBar seekBar;
     private TextView textView2;
     private TextView textView;
+    private TextView lyricText;
     private MusicService musicService;
     private TabledatabaseHelper dbHelper;
     private String CurrentTitle = "CurrentTitle";
@@ -68,6 +80,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         textView2 = (TextView) findViewById(R.id.textView2);
         textView = (TextView) findViewById(R.id.textView);
+        lyricText = (TextView) findViewById(R.id.lyricText);
+        lyricText.setVisibility(View.GONE);
         play = (Button) findViewById(R.id.play);
         seekBar = (SeekBar) findViewById(R.id.seekBar);
         localmusic = (Button) findViewById(R.id.localmusic);
@@ -171,7 +185,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 do {
                     Log.e("huizhong", "CurrentTitle = " + CurrentTitle);
 
-                    if (CurrentTitle.equals(cursor.getString(cursor.getColumnIndex("title")))) {
+                    if (CurrentTitle.equals(cursor.getString(cursor.getColumnIndexOrThrow("title")))) {
                         Log.e("huizhong", "找到匹配");
 
                         cursor.moveToNext();
@@ -180,9 +194,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                             Log.e("huizhong", "当前歌曲在最后一行返回第一行");
                             cursor.moveToFirst();
 
-                            String url = cursor.getString(cursor.getColumnIndex("url"));
-                            String title = cursor.getString(cursor.getColumnIndex("title"));
-                            String artist = cursor.getString(cursor.getColumnIndex("artist"));
+                            String url = cursor.getString(cursor.getColumnIndexOrThrow("url"));
+                            String title = cursor.getString(cursor.getColumnIndexOrThrow("title"));
+                            String artist = cursor.getString(cursor.getColumnIndexOrThrow("artist"));
 
                             Intent intent2 = new Intent("startnew");
                             intent2.putExtra("url", url);
@@ -199,9 +213,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                         } else {
                             Log.e("huizhong", "当前歌曲不是在最后一行");
 
-                            String url = cursor.getString(cursor.getColumnIndex("url"));
-                            String title = cursor.getString(cursor.getColumnIndex("title"));
-                            String artist = cursor.getString(cursor.getColumnIndex("artist"));
+                            String url = cursor.getString(cursor.getColumnIndexOrThrow("url"));
+                            String title = cursor.getString(cursor.getColumnIndexOrThrow("title"));
+                            String artist = cursor.getString(cursor.getColumnIndexOrThrow("artist"));
 
                             cursor.moveToLast();
 
@@ -229,15 +243,15 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
             if (cursorr.moveToFirst()) {
                 do {
-                    if (CurrentTitle.equals(cursorr.getString(cursorr.getColumnIndex("title")))) {
+                    if (CurrentTitle.equals(cursorr.getString(cursorr.getColumnIndexOrThrow("title")))) {
                         cursorr.moveToPrevious();
 
                         if (cursorr.isBeforeFirst()) {
                             cursorr.moveToLast();
 
-                            String url = cursorr.getString(cursorr.getColumnIndex("url"));
-                            String title = cursorr.getString(cursorr.getColumnIndex("title"));
-                            String artist = cursorr.getString(cursorr.getColumnIndex("artist"));
+                            String url = cursorr.getString(cursorr.getColumnIndexOrThrow("url"));
+                            String title = cursorr.getString(cursorr.getColumnIndexOrThrow("title"));
+                            String artist = cursorr.getString(cursorr.getColumnIndexOrThrow("artist"));
 
                             Intent intent8 = new Intent("startnew");
                             intent8.putExtra("url", url);
@@ -252,9 +266,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                             break;
 
                         } else {
-                            String url = cursorr.getString(cursorr.getColumnIndex("url"));
-                            String title = cursorr.getString(cursorr.getColumnIndex("title"));
-                            String artist = cursorr.getString(cursorr.getColumnIndex("artist"));
+                            String url = cursorr.getString(cursorr.getColumnIndexOrThrow("url"));
+                            String title = cursorr.getString(cursorr.getColumnIndexOrThrow("title"));
+                            String artist = cursorr.getString(cursorr.getColumnIndexOrThrow("artist"));
 
                             cursorr.moveToNext();
 
@@ -295,9 +309,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
             } else if (intent.getAction().equals("gettitle")) {
                 CurrentTitle = intent.getStringExtra("title");
+                String artist = intent.getStringExtra("artist");
                 Log.e("huizhong", "CurrentTitle = " + CurrentTitle);
-                textView2.setText(intent.getStringExtra("artist"));
-                textView.setText(intent.getStringExtra("title"));
+                textView2.setText(artist);
+                textView.setText(CurrentTitle);
+                loadLyrics(CurrentTitle, artist);
 
             } else if (intent.getAction().equals("nextsong")) {
                 Log.e("huizhong", "歌曲播放结束，接收到广播，发送下一首歌曲");
@@ -309,7 +325,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     do {
                         Log.e("huizhong", "CurrentTitle = " + CurrentTitle);
 
-                        if (CurrentTitle.equals(cursorr.getString(cursorr.getColumnIndex("title")))) {
+                        if (CurrentTitle.equals(cursorr.getString(cursorr.getColumnIndexOrThrow("title")))) {
                             Log.e("huizhong", "找到匹配");
 
                             cursorr.moveToNext();
@@ -318,9 +334,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                                 Log.e("huizhong", "当前歌曲在最后一行返回第一行");
                                 cursorr.moveToFirst();
 
-                                String url = cursorr.getString(cursorr.getColumnIndex("url"));
-                                String title = cursorr.getString(cursorr.getColumnIndex("title"));
-                                String artist = cursorr.getString(cursorr.getColumnIndex("artist"));
+                                String url = cursorr.getString(cursorr.getColumnIndexOrThrow("url"));
+                                String title = cursorr.getString(cursorr.getColumnIndexOrThrow("title"));
+                                String artist = cursorr.getString(cursorr.getColumnIndexOrThrow("artist"));
 
                                 Intent intent2 = new Intent("startnew");
                                 intent2.putExtra("url", url);
@@ -337,9 +353,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                             } else {
                                 Log.e("huizhong", "当前歌曲不是在最后一行");
 
-                                String url = cursorr.getString(cursorr.getColumnIndex("url"));
-                                String title = cursorr.getString(cursorr.getColumnIndex("title"));
-                                String artist = cursorr.getString(cursorr.getColumnIndex("artist"));
+                                String url = cursorr.getString(cursorr.getColumnIndexOrThrow("url"));
+                                String title = cursorr.getString(cursorr.getColumnIndexOrThrow("title"));
+                                String artist = cursorr.getString(cursorr.getColumnIndexOrThrow("artist"));
 
                                 cursorr.moveToLast();
 
@@ -363,6 +379,101 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             }
         }
     };
+
+    private void loadLyrics(String title, String artist) {
+        if (title == null || title.trim().length() == 0) {
+            lyricText.setVisibility(View.GONE);
+            return;
+        }
+        lyricText.setVisibility(View.GONE);
+        new LyricsTask().execute(title, artist == null ? "" : artist);
+    }
+
+    private class LyricsTask extends AsyncTask<String, Void, String> {
+        @Override
+        protected String doInBackground(String... params) {
+            HttpURLConnection connection = null;
+            BufferedReader reader = null;
+            try {
+                String title = params[0];
+                String artist = params.length > 1 ? params[1] : "";
+                String urlText = "https://lrclib.net/api/search?track_name="
+                        + URLEncoder.encode(title, "UTF-8");
+                if (artist != null && artist.trim().length() > 0 && !artist.equals("<unknown>")) {
+                    urlText += "&artist_name=" + URLEncoder.encode(artist, "UTF-8");
+                }
+
+                URL url = new URL(urlText);
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setRequestMethod("GET");
+                connection.setRequestProperty("User-Agent", "MusicPlayer5.0 Android Demo");
+                connection.setConnectTimeout(8000);
+                connection.setReadTimeout(8000);
+
+                InputStream inputStream = connection.getInputStream();
+                reader = new BufferedReader(new InputStreamReader(inputStream));
+                StringBuilder builder = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    builder.append(line);
+                }
+
+                JSONArray results = new JSONArray(builder.toString());
+                if (results.length() == 0) {
+                    return "";
+                }
+
+                JSONObject item = results.getJSONObject(0);
+                String lyrics = item.optString("plainLyrics", "");
+                if (lyrics.length() == 0) {
+                    lyrics = item.optString("syncedLyrics", "");
+                }
+                return cleanLyrics(lyrics);
+            } catch (Exception e) {
+                return "";
+            } finally {
+                try {
+                    if (reader != null) {
+                        reader.close();
+                    }
+                } catch (Exception ignored) {
+                }
+                if (connection != null) {
+                    connection.disconnect();
+                }
+            }
+        }
+
+        @Override
+        protected void onPostExecute(String lyrics) {
+            if (lyrics == null || lyrics.trim().length() == 0) {
+                lyricText.setVisibility(View.GONE);
+            } else {
+                lyricText.setText(lyrics);
+                lyricText.setVisibility(View.VISIBLE);
+            }
+        }
+    }
+
+    private String cleanLyrics(String lyrics) {
+        if (lyrics == null) {
+            return "";
+        }
+        String[] lines = lyrics.split("\n");
+        StringBuilder builder = new StringBuilder();
+        int count = 0;
+        for (String line : lines) {
+            String text = line.replaceAll("\\[\\d{2}:\\d{2}\\.\\d{2,3}\\]", "").trim();
+            if (text.length() > 0) {
+                builder.append(text).append("\n");
+                count++;
+            }
+            if (count >= 6) {
+                break;
+            }
+        }
+        return builder.toString().trim();
+    }
 
     @Override
     protected void onDestroy() {

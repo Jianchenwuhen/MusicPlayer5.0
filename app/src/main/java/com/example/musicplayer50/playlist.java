@@ -72,9 +72,9 @@ public class playlist extends AppCompatActivity {
         count = cursor == null ? 0 : cursor.getCount();
         for (int i = 0; i < count; i++) {
                 cursor.moveToNext();
-                String title = cursor.getString(cursor.getColumnIndex("title"));
-                String artist = cursor.getString(cursor.getColumnIndex("artist"));
-                String url = cursor.getString(cursor.getColumnIndex("url"));
+                String title = cursor.getString(cursor.getColumnIndexOrThrow("title"));
+                String artist = cursor.getString(cursor.getColumnIndexOrThrow("artist"));
+                String url = cursor.getString(cursor.getColumnIndexOrThrow("url"));
                 Music music = new Music();
                 music.setTitle(title);
                 music.setArtist(artist);

@@ -6,6 +6,7 @@ import android.support.v7.app.AppCompatActivity;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 
 import org.json.JSONArray;
@@ -25,6 +26,7 @@ public class OnlineMusicActivity extends AppCompatActivity {
             "dance", "love", "summer", "classic", "hip hop"
     };
 
+    private EditText searchKeyword;
     private TextView resultText;
 
     @Override
@@ -37,7 +39,23 @@ public class OnlineMusicActivity extends AppCompatActivity {
         }
         this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
+        searchKeyword = (EditText) findViewById(R.id.searchKeyword);
         resultText = (TextView) findViewById(R.id.onlineResult);
+
+        Button searchButton = (Button) findViewById(R.id.searchOnlineMusic);
+        searchButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                String keyword = searchKeyword.getText().toString().trim();
+                if (keyword.length() == 0) {
+                    resultText.setText("请输入搜索关键词");
+                } else {
+                    resultText.setText("正在搜索：" + keyword + "...");
+                    new LoadOnlineMusicTask().execute(keyword);
+                }
+            }
+        });
+
         Button loadButton = (Button) findViewById(R.id.loadOnlineMusic);
         loadButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -48,16 +66,22 @@ public class OnlineMusicActivity extends AppCompatActivity {
         });
     }
 
-    private class LoadOnlineMusicTask extends AsyncTask<Void, Void, String> {
+    private class LoadOnlineMusicTask extends AsyncTask<String, Void, String> {
         @Override
-        protected String doInBackground(Void... voids) {
+        protected String doInBackground(String... keywords) {
             HttpURLConnection connection = null;
             BufferedReader reader = null;
 
             try {
-                String keyword = SEARCH_WORDS[new Random().nextInt(SEARCH_WORDS.length)];
+                String keyword;
+                if (keywords.length > 0 && keywords[0] != null && keywords[0].trim().length() > 0) {
+                    keyword = keywords[0].trim();
+                } else {
+                    keyword = SEARCH_WORDS[new Random().nextInt(SEARCH_WORDS.length)];
+                }
+
                 String encodedKeyword = URLEncoder.encode(keyword, "UTF-8");
-                URL url = new URL("https://itunes.apple.com/search?term=" + encodedKeyword + "&media=music&limit=5");
+                URL url = new URL("https://itunes.apple.com/search?term=" + encodedKeyword + "&media=music&limit=8");
                 connection = (HttpURLConnection) url.openConnection();
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(8000);
@@ -74,7 +98,12 @@ public class OnlineMusicActivity extends AppCompatActivity {
                 JSONObject jsonObject = new JSONObject(builder.toString());
                 JSONArray results = jsonObject.getJSONArray("results");
                 StringBuilder recommendBuilder = new StringBuilder();
-                recommendBuilder.append("在线推荐歌曲：").append(keyword).append("\n\n");
+                recommendBuilder.append("在线歌曲：").append(keyword).append("\n\n");
+
+                if (results.length() == 0) {
+                    recommendBuilder.append("没有搜索到相关歌曲");
+                    return recommendBuilder.toString();
+                }
 
                 for (int i = 0; i < results.length(); i++) {
                     JSONObject item = results.getJSONObject(i);
