@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/localmusicbg"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <Button
+        android:id="@+id/loadOnlineMusic"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="获取在线推荐" />
+
+    <TextView
+        android:id="@+id/onlineResult"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="点击按钮，通过网络API获取在线歌曲推荐"
+        android:textColor="#ffffff"
+        android:textSize="18sp" />
+
+</LinearLayout>

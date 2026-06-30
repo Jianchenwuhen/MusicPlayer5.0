@@ -32,6 +32,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private Button playlist;
     private Button playnext;
     private Button playlast;
+    private Button onlinemusic;
     private SeekBar seekBar;
     private TextView textView2;
     private TextView textView;
@@ -70,6 +71,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         play = (Button) findViewById(R.id.play);
         seekBar = (SeekBar) findViewById(R.id.seekBar);
         localmusic = (Button) findViewById(R.id.localmusic);
+        onlinemusic = (Button) findViewById(R.id.onlinemusic);
         playlist = (Button) findViewById(R.id.playlist);
         playnext = (Button) findViewById(R.id.playnext);
         playlast = (Button) findViewById(R.id.playlast);
@@ -78,6 +80,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         playnext.setOnClickListener(this);
         play.setOnClickListener(this);
         localmusic.setOnClickListener(this);
+        onlinemusic.setOnClickListener(this);
         playlist.setOnClickListener(this);
 
         Intent intent = new Intent(this, MusicService.class);
@@ -150,6 +153,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         } else if (id == R.id.localmusic) {
             Intent intent = new Intent(MainActivity.this, LocalMusicActivity.class);
+            startActivity(intent);
+
+        } else if (id == R.id.onlinemusic) {
+            Intent intent = new Intent(MainActivity.this, OnlineMusicActivity.class);
             startActivity(intent);
 
         } else if (id == R.id.playlist) {

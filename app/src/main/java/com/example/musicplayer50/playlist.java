@@ -66,12 +66,11 @@ public class playlist extends AppCompatActivity {
         bindService(intent, conn, Context.BIND_AUTO_CREATE);
 
         dbHelper = new TabledatabaseHelper(this,"login.db",null,1);
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
-        Cursor cursor = db.query("login",null,null,null,null,null,null);
+        Cursor cursor = getContentResolver().query(PlaylistContract.CONTENT_URI, null, null, null, null);
         musics = new ArrayList<Music>();
         musics.clear();
-        count = cursor.getCount();
-        for (int i = 0; i < cursor.getCount(); i++) {
+        count = cursor == null ? 0 : cursor.getCount();
+        for (int i = 0; i < count; i++) {
                 cursor.moveToNext();
                 String title = cursor.getString(cursor.getColumnIndex("title"));
                 String artist = cursor.getString(cursor.getColumnIndex("artist"));
@@ -83,7 +82,9 @@ public class playlist extends AppCompatActivity {
                 musics.add(music);
                 Log.e("huizhong", "music adds succeedly");
         }
-        cursor.close();
+        if (cursor != null) {
+            cursor.close();
+        }
 
         Button button = (Button)findViewById(R.id.button2);
         button.setOnClickListener(new View.OnClickListener() {
@@ -97,12 +98,9 @@ public class playlist extends AppCompatActivity {
         button6.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                SQLiteDatabase db = dbHelper.getWritableDatabase();
-                db.delete("login",null,null);
+                getContentResolver().delete(PlaylistContract.CONTENT_URI, null, null);
                 Log.e("huizhong","count = "+count);
-                for (int i = 1; i <= count; i++) {
-                     musics.remove(0);
-                }
+                musics.clear();
                 adapter.notifyDataSetChanged();
             }
         });
@@ -150,10 +148,9 @@ public class playlist extends AppCompatActivity {
         AdapterView.AdapterContextMenuInfo menuInfo = (AdapterView.AdapterContextMenuInfo)item.getMenuInfo();
         switch(item.getItemId()){
             case 1:
-                SQLiteDatabase db = dbHelper.getWritableDatabase();
                 String title = ((TextView)menuInfo.targetView.findViewById(R.id.songname)).getText().toString();
 
-                db.delete("login", "title =?", new String[]{title+""});
+                getContentResolver().delete(PlaylistContract.CONTENT_URI, "title =?", new String[]{title+""});
                 Log.e("huizhong","删除SQL项成功" );
                 musics.remove(menuInfo.position);
                 adapter.notifyDataSetChanged();

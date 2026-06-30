@@ -114,17 +114,18 @@ public class LocalMusicActivity extends AppCompatActivity {
                 String title = music.getTitle();
                 String artist = music.getArtist();
 
-                SQLiteDatabase db = dbHelper.getWritableDatabase();
                 ContentValues values = new ContentValues();
-                Cursor cursor = db.query("login",null,null,null,null,null,null);
+                Cursor cursor = getContentResolver().query(PlaylistContract.CONTENT_URI, null, null, null, null);
                 Log.e("huizhong","当前歌曲的title是："+title );
-                for (int i = 0; i < cursor.getCount(); i++) {
-                    cursor.moveToNext();
-                    Log.e("huizhong","当前游标title是："+cursor.getString(cursor.getColumnIndex("title")));
-                    if(title.equals(cursor.getString(cursor.getColumnIndex("title")))) {
-                        Log.e("huizhong","已经存在歌曲，不插入了" );
-                        Exist = true;
-                        break;
+                if (cursor != null) {
+                    for (int i = 0; i < cursor.getCount(); i++) {
+                        cursor.moveToNext();
+                        Log.e("huizhong","当前游标title是："+cursor.getString(cursor.getColumnIndex("title")));
+                        if(title.equals(cursor.getString(cursor.getColumnIndex("title")))) {
+                            Log.e("huizhong","已经存在歌曲，不插入了" );
+                            Exist = true;
+                            break;
+                        }
                     }
                 }
                 Log.e("huizhong","当前歌曲是否存在 "+Exist );
@@ -133,12 +134,14 @@ public class LocalMusicActivity extends AppCompatActivity {
                     values.put("title", title);
                     values.put("artist", artist);
                     values.put("url", url);
-                    db.insert("login", null, values);
+                    getContentResolver().insert(PlaylistContract.CONTENT_URI, values);
                     values.clear();
                     Log.e("huizhong", "成功插入login表");
                     Exist = false;
                 }
-                cursor.close();
+                if (cursor != null) {
+                    cursor.close();
+                }
                 Intent intent = new Intent("startnew");
                 intent.putExtra("url",url);
                 intent.putExtra("title",title);
