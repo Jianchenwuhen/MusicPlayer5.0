@@ -17,6 +17,7 @@ import android.widget.Toast;
 public class MusicService extends Service {
     private MediaPlayer mediaPlayer = new MediaPlayer();
     private MyBinder myBinder;
+    private boolean prepared = false;  // 标记是否已加载歌曲
 
     private static final int SET_SEEKBAR_MAX = 3;
     private static final int UPDATE_PROGRESS = 1;
@@ -46,20 +47,30 @@ public class MusicService extends Service {
         return myBinder;
     }
     public void start() {
-        if (mediaPlayer != null) {
-            if (mediaPlayer.isPlaying()) {
-                mediaPlayer.pause();
-                Intent intent1 = new Intent("pauseimage");
-                sendBroadcast(intent1);
-            } else {
-                mediaPlayer.start();
-                Intent intent2 = new Intent("playimage");
-                sendBroadcast(intent2);
+        if (mediaPlayer != null && prepared) {
+            try {
+                if (mediaPlayer.isPlaying()) {
+                    mediaPlayer.pause();
+                    Intent intent1 = new Intent("pauseimage");
+                    sendBroadcast(intent1);
+                } else {
+                    mediaPlayer.start();
+                    Intent intent2 = new Intent("playimage");
+                    sendBroadcast(intent2);
+                }
+            } catch (IllegalStateException e) {
+                e.printStackTrace();
+                // MediaPlayer状态异常，重新准备
+                prepared = false;
+                Toast.makeText(getApplicationContext(), "播放出错，请重新选择歌曲", Toast.LENGTH_SHORT).show();
             }
+        } else {
+            Toast.makeText(getApplicationContext(), "请先选择一首歌曲", Toast.LENGTH_SHORT).show();
         }
     }
 
     public void startnew(String path) throws Exception {
+        prepared = false;  // 先标记为未就绪，防止加载失败时状态混乱
         if (mediaPlayer == null) {
             mediaPlayer = new MediaPlayer();}
 
@@ -69,6 +80,7 @@ public class MusicService extends Service {
         mediaPlayer.setDataSource(path);
         mediaPlayer.prepare();
         mediaPlayer.start();
+        prepared = true;  // 歌曲加载成功
         mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
             @Override
             public void onCompletion(MediaPlayer mp) {
@@ -148,6 +160,7 @@ public class MusicService extends Service {
 
     @Override
     public void onDestroy() {
+        prepared = false;
         mediaPlayer.stop();
         mediaPlayer.release();
         mediaPlayer = null;

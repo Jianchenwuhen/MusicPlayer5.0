@@ -95,6 +95,15 @@ public class LocalMusicActivity extends AppCompatActivity {
             }
         });
 
+        Button buttonRefresh = (Button)findViewById(R.id.button_refresh);
+        buttonRefresh.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                refreshMusicList();
+                Toast.makeText(LocalMusicActivity.this, "已刷新，共 " + musics.size() + " 首歌曲", Toast.LENGTH_SHORT).show();
+            }
+        });
+
 
 
         dbHelper = new TabledatabaseHelper(this,"login.db",null,1);
@@ -154,6 +163,14 @@ public class LocalMusicActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         unbindService(conn);
+    }
+
+    private void refreshMusicList() {
+        Findmusic findmusic = new Findmusic();
+        musics = findmusic.getmusics(LocalMusicActivity.this.getContentResolver());
+        adapter = new MusicAdapter(LocalMusicActivity.this, R.layout.musicitem, musics);
+        listView.setAdapter(adapter);
+        adapter.notifyDataSetChanged();
     }
     public static Intent createExplicitFromImplicitIntent(Context context, Intent implicitIntent) {
         // Retrieve all services that can match the given intent

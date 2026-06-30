@@ -21,7 +21,7 @@
         </activity>
 
         <service
-            android:name=".MusicService">
+            android:name=".MusicService"
             android:enabled="true"
             android:exported="true">
             <intent-filter>
