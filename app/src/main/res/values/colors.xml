@@ -1,6 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#3F51B5</color>
-    <color name="colorPrimaryDark">#303F9F</color>
-    <color name="colorAccent">#FF4081</color>
+    <!-- ============================================================
+         MusicPlayer 设计变量 · 深色玻璃风 (青→粉双强调)
+         所有界面统一引用这些 token，禁止在布局里写死颜色。
+         ============================================================ -->
+
+    <!-- 主强调：天蓝 (接原 button_primary) -->
+    <color name="accent_primary">#38BDF8</color>
+    <color name="accent_primary_pressed">#7DD3FC</color>
+    <color name="accent_primary_dim">#0EA5E9</color>
+
+    <!-- 次强调：品粉 -->
+    <color name="accent_secondary">#F472B6</color>
+    <color name="accent_secondary_dim">#EC4899</color>
+
+    <!-- 背景 & 玻璃面 -->
+    <color name="scrim">#99060A12</color>
+    <color name="window_background">#060A12</color>
+    <color name="surface_glass">#990A1018</color>
+    <color name="surface_glass_soft">#660A1018</color>
+    <color name="surface_glass_strong">#CC0A1018</color>
+
+    <!-- 描边 / 分隔 -->
+    <color name="stroke_hairline">#33FFFFFF</color>
+    <color name="stroke_soft">#22FFFFFF</color>
+
+    <!-- 文字 -->
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#CCFFFFFF</color>
+    <color name="text_tertiary">#99FFFFFF</color>
+    <color name="text_hint">#BBFFFFFF</color>
+    <color name="text_on_accent">#FFFFFFFF</color>
+
+    <!-- 触控反馈 -->
+    <color name="ripple_light">#40FFFFFF</color>
+    <color name="ripple_accent">#5538BDF8</color>
+
+    <!-- 进度条 -->
+    <color name="track_inactive">#33FFFFFF</color>
+    <color name="track_active">@color/accent_primary</color>
+
+    <!-- 兼容旧主题引用（保留，避免其它未迁移处报错） -->
+    <color name="colorPrimary">#0EA5E9</color>
+    <color name="colorPrimaryDark">#060A12</color>
+    <color name="colorAccent">#38BDF8</color>
 </resources>

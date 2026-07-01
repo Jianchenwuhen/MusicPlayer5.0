@@ -1,11 +1,90 @@
 <resources>
 
-    <!-- Base application theme. -->
-    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
-        <!-- Customize your theme here. -->
+    <!-- ============================================================
+         应用主题：深色、无 ActionBar、沉浸式系统栏
+         ============================================================ -->
+    <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
-        <item name="colorAccent">@color/colorAccent</item>
+        <item name="colorAccent">@color/accent_primary</item>
+
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorHint">@color/text_hint</item>
+
+        <!-- edge-to-edge：内容延伸到系统栏后，栏本身透明 -->
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <!-- ============================================================
+         文字样式
+         ============================================================ -->
+    <style name="Text" parent="" />
+
+    <style name="Text.Display">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">@dimen/text_display</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Text.Headline">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">@dimen/text_headline</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Text.Title">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">@dimen/text_title</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+
+    <style name="Text.Body">
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">@dimen/text_body</item>
+    </style>
+
+    <style name="Text.Caption">
+        <item name="android:textColor">@color/text_tertiary</item>
+        <item name="android:textSize">@dimen/text_caption</item>
+    </style>
+
+    <!-- ============================================================
+         按钮样式
+         ============================================================ -->
+    <style name="Widget" parent="" />
+
+    <style name="Widget.Button">
+        <item name="android:minHeight">@dimen/button_height</item>
+        <item name="android:textColor">@color/text_on_accent</item>
+        <item name="android:textSize">@dimen/text_body</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:gravity">center</item>
+    </style>
+
+    <style name="Widget.Button.Primary">
+        <item name="android:background">@drawable/button_primary</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Widget.Button.Secondary">
+        <item name="android:background">@drawable/button_secondary</item>
+        <item name="android:textColor">@color/text_primary</item>
+    </style>
+
+    <!-- ============================================================
+         玻璃面板
+         ============================================================ -->
+    <style name="Panel" parent="" />
+
+    <style name="Panel.Glass">
+        <item name="android:background">@drawable/panel_glass</item>
+        <item name="android:padding">@dimen/panel_padding</item>
     </style>
 
 </resources>
