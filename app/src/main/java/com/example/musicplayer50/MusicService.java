@@ -389,6 +389,7 @@ public class MusicService extends Service {
         );
 
         Intent playIntent = new Intent(ACTION_NOTIFY_PLAY);
+        playIntent.setPackage(getPackageName()); // 送达本应用 NOT_EXPORTED 接收器（Android 14）
         PendingIntent playPI = PendingIntent.getBroadcast(
                 this,
                 0,
@@ -397,6 +398,7 @@ public class MusicService extends Service {
         );
 
         Intent nextIntent = new Intent(ACTION_NOTIFY_NEXT);
+        nextIntent.setPackage(getPackageName());
         PendingIntent nextPI = PendingIntent.getBroadcast(
                 this,
                 1,
@@ -405,6 +407,7 @@ public class MusicService extends Service {
         );
 
         Intent prevIntent = new Intent(ACTION_NOTIFY_PREV);
+        prevIntent.setPackage(getPackageName());
         PendingIntent prevPI = PendingIntent.getBroadcast(
                 this,
                 2,

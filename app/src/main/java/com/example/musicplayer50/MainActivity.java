@@ -516,12 +516,27 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     }
 
     /**
-     * 将 ListView 滚动到当前歌词行（保持可见区域的 1/3 处）
+     * 将 ListView 平滑滚动到当前歌词行，并使其居中显示
      */
-    private void scrollToCurrentLine(int index) {
+    private void scrollToCurrentLine(final int index) {
         if (index < 0 || lyricListView == null) return;
-        // smoothScrollToPosition 会把目标行滚到可见区域的顶部附近
-        lyricListView.smoothScrollToPosition(index);
+        lyricListView.post(new Runnable() {
+            @Override
+            public void run() {
+                int listHeight = lyricListView.getHeight();
+                int itemHeight = 0;
+                View firstChild = lyricListView.getChildAt(0);
+                if (firstChild != null) {
+                    itemHeight = firstChild.getHeight();
+                }
+                // 让当前行落在可见区域中间：从顶部偏移 半屏高 - 半行高
+                int offset = listHeight / 2 - itemHeight / 2;
+                if (offset < 0) {
+                    offset = 0;
+                }
+                lyricListView.smoothScrollToPositionFromTop(index, offset);
+            }
+        });
     }
 
     @Override
