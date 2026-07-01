@@ -12,6 +12,7 @@
         android:background="#77000000" />
 
     <LinearLayout
+        android:id="@+id/contentRoot"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
@@ -52,12 +53,24 @@
                 android:textSize="14sp" />
         </LinearLayout>
 
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="156dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/panel_glass"
+            android:padding="10dp">
+
+            <com.example.musicplayer50.AudioWaveView
+                android:id="@+id/audioWaveView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </FrameLayout>
 
         <ListView
             android:id="@+id/lyricListView"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginTop="18dp"
+            android:layout_marginTop="12dp"
             android:layout_weight="1"
             android:background="@drawable/panel_glass"
             android:cacheColorHint="#00000000"
@@ -127,7 +140,7 @@
                     android:layout_height="66dp"
                     android:layout_marginLeft="34dp"
                     android:layout_marginRight="34dp"
-                    android:background="@drawable/buttonbg" />
+                    android:background="@drawable/control_play" />
 
                 <Button
                     android:id="@+id/playnext"

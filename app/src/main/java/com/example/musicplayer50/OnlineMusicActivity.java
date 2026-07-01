@@ -4,7 +4,6 @@ import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.view.View;
-import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -34,10 +33,8 @@ public class OnlineMusicActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.online_music);
 
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().hide();
-        }
-        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        UiUtils.setupEdgeToEdge(this);
+        UiUtils.applySystemBarInsets(findViewById(R.id.contentRoot));
 
         searchKeyword = (EditText) findViewById(R.id.searchKeyword);
         resultText = (TextView) findViewById(R.id.onlineResult);

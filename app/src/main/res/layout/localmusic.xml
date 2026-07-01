@@ -10,6 +10,7 @@
         android:background="#88000000" />
 
     <LinearLayout
+        android:id="@+id/contentRoot"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
@@ -61,5 +62,18 @@
             android:dividerHeight="8dp"
             android:paddingTop="4dp"
             android:paddingBottom="4dp" />
+
+        <TextView
+            android:id="@+id/emptyLocalMusic"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="12dp"
+            android:layout_weight="1"
+            android:background="@drawable/panel_glass"
+            android:gravity="center"
+            android:text="暂无本地音乐"
+            android:textColor="#CCFFFFFF"
+            android:textSize="18sp"
+            android:visibility="gone" />
     </LinearLayout>
 </FrameLayout>

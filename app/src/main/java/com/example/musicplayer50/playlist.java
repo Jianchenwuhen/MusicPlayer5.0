@@ -1,33 +1,20 @@
 package com.example.musicplayer50;
 
-import android.Manifest;
-import android.app.Service;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
-import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
 import android.os.Bundle;
 import android.os.IBinder;
-import android.support.v4.app.ActivityCompat;
-import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.ContextMenu;
-import android.view.GestureDetector;
 import android.view.MenuItem;
-import android.view.MotionEvent;
 import android.view.View;
-import android.view.Window;
-import android.view.WindowManager;
 import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ListView;
-import android.widget.TextView;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,8 +24,7 @@ import java.util.List;
  */
 public class playlist extends AppCompatActivity {
     private int count;
-    private TabledatabaseHelper dbHelper;
-    private ArrayAdapter adapter;
+    private MusicAdapter adapter;
     private MusicService musicService;
     private ListView listView;
     private ServiceConnection conn = new ServiceConnection() {
@@ -50,39 +36,37 @@ public class playlist extends AppCompatActivity {
         public void onServiceDisconnected(ComponentName name) {
         }
     };
-    private static final int REQUEST_EXTERNAL_STORAGE = 1;
-    private static String[] PERMISSIONS_STORAGE = {
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE,};
     private List<Music> musics;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.playlist);
-        getSupportActionBar().hide();
-        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        UiUtils.setupEdgeToEdge(this);
+        UiUtils.applySystemBarInsets(findViewById(R.id.contentRoot));
 
         Intent intent = new Intent(this, MusicService.class);
         bindService(intent, conn, Context.BIND_AUTO_CREATE);
 
-        dbHelper = new TabledatabaseHelper(this,"login.db",null,1);
-        Cursor cursor = getContentResolver().query(PlaylistContract.CONTENT_URI, null, null, null, null);
+        Cursor cursor = getContentResolver().query(
+                PlaylistContract.CONTENT_URI,
+                null,
+                null,
+                null,
+                PlaylistContract.COLUMN_ID + " ASC");
         musics = new ArrayList<Music>();
-        musics.clear();
-        count = cursor == null ? 0 : cursor.getCount();
-        for (int i = 0; i < count; i++) {
-                cursor.moveToNext();
-                String title = cursor.getString(cursor.getColumnIndexOrThrow("title"));
-                String artist = cursor.getString(cursor.getColumnIndexOrThrow("artist"));
-                String url = cursor.getString(cursor.getColumnIndexOrThrow("url"));
+        if (cursor != null) {
+            while (cursor.moveToNext()) {
+                String title = cursor.getString(cursor.getColumnIndexOrThrow(PlaylistContract.COLUMN_TITLE));
+                String artist = cursor.getString(cursor.getColumnIndexOrThrow(PlaylistContract.COLUMN_ARTIST));
+                String url = cursor.getString(cursor.getColumnIndexOrThrow(PlaylistContract.COLUMN_URL));
                 Music music = new Music();
                 music.setTitle(title);
                 music.setArtist(artist);
                 music.setUrl(url);
                 musics.add(music);
                 Log.e("huizhong", "music adds succeedly");
-        }
-        if (cursor != null) {
+            }
+            count = musics.size();
             cursor.close();
         }
 
@@ -90,7 +74,9 @@ public class playlist extends AppCompatActivity {
         button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                musicService.start();
+                if (musicService != null) {
+                    musicService.start();
+                }
             }
         });
 
@@ -101,21 +87,15 @@ public class playlist extends AppCompatActivity {
                 getContentResolver().delete(PlaylistContract.CONTENT_URI, null, null);
                 Log.e("huizhong","count = "+count);
                 musics.clear();
+                count = 0;
                 adapter.notifyDataSetChanged();
             }
         });
 
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, REQUEST_EXTERNAL_STORAGE);
-        }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_EXTERNAL_STORAGE);
-        }
-
         adapter = new MusicAdapter(playlist.this, R.layout.musicitem, musics); //新建想对应的适配器
       // adapter = new ArrayAdapter<String>(playlist.this,android.R.layout.simple_list_item_1,list);     //用字符串适配器试验
         listView = (ListView) findViewById(R.id.listView2);
+        listView.setEmptyView(findViewById(R.id.emptyPlaylist));
         listView.setAdapter(adapter);
 
         this.registerForContextMenu(listView);
@@ -129,14 +109,13 @@ public class playlist extends AppCompatActivity {
                 String title = music.getTitle();
                 String artist = music.getArtist();
 
-                Intent intent = new Intent("startnew");
+                Intent intent = new Intent(playlist.this, MusicService.class);
+                intent.setAction("startnew");
                 intent.putExtra("url", url);
                 intent.putExtra("title", title);
                 intent.putExtra("artist", artist);
 
-                final Intent eintent = new Intent(createExplicitFromImplicitIntent(playlist.this, intent));
-                bindService(eintent, conn, Service.BIND_AUTO_CREATE);
-                startService(eintent);
+                startService(intent);
             }
         });
     }
@@ -148,11 +127,14 @@ public class playlist extends AppCompatActivity {
         AdapterView.AdapterContextMenuInfo menuInfo = (AdapterView.AdapterContextMenuInfo)item.getMenuInfo();
         switch(item.getItemId()){
             case 1:
-                String title = ((TextView)menuInfo.targetView.findViewById(R.id.songname)).getText().toString();
-
-                getContentResolver().delete(PlaylistContract.CONTENT_URI, "title =?", new String[]{title+""});
+                Music music = musics.get(menuInfo.position);
+                getContentResolver().delete(
+                        PlaylistContract.CONTENT_URI,
+                        PlaylistContract.COLUMN_TITLE + " = ? AND " + PlaylistContract.COLUMN_URL + " = ?",
+                        new String[]{music.getTitle(), music.getUrl()});
                 Log.e("huizhong","删除SQL项成功" );
                 musics.remove(menuInfo.position);
+                count = musics.size();
                 adapter.notifyDataSetChanged();
                 break;
         }
@@ -162,24 +144,5 @@ public class playlist extends AppCompatActivity {
     protected void onDestroy() {
         unbindService(conn);
         super.onDestroy();
-    }
-    public static Intent createExplicitFromImplicitIntent(Context context, Intent implicitIntent) {
-        // Retrieve all services that can match the given intent
-        PackageManager pm = context.getPackageManager();
-        List<ResolveInfo> resolveInfo = pm.queryIntentServices(implicitIntent, 0);
-        // Make sure only one match was found
-        if (resolveInfo == null || resolveInfo.size() != 1) {
-            return null;
-        }
-        // Get component info and create ComponentName
-        ResolveInfo serviceInfo = resolveInfo.get(0);
-        String packageName = serviceInfo.serviceInfo.packageName;
-        String className = serviceInfo.serviceInfo.name;
-        ComponentName component = new ComponentName(packageName, className);
-        // Create a new intent. Use the old one for extras and such reuse
-        Intent explicitIntent = new Intent(implicitIntent);
-        // Set the component to be explicit
-        explicitIntent.setComponent(component);
-        return explicitIntent;
     }
 }
