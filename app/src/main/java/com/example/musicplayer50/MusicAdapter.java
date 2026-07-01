@@ -5,7 +5,6 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
-import android.widget.ImageView;
 import android.widget.TextView;
 
 import java.util.List;
@@ -22,7 +21,6 @@ public class MusicAdapter extends ArrayAdapter<Music> {
         if (convertView == null) {
             convertView = LayoutInflater.from(getContext()).inflate(R.layout.musicitem, parent, false);
             holder = new ViewHolder();
-            holder.musicImage = (ImageView) convertView.findViewById(R.id.imageView);
             holder.songName = (TextView) convertView.findViewById(R.id.songname);
             holder.singer = (TextView) convertView.findViewById(R.id.singer);
             convertView.setTag(holder);
@@ -31,7 +29,6 @@ public class MusicAdapter extends ArrayAdapter<Music> {
         }
 
         Music music = getItem(position);
-        holder.musicImage.setImageResource(R.drawable.black);
         if (music != null) {
             holder.songName.setText(music.getTitle());
             holder.singer.setText(music.getArtist());
@@ -43,7 +40,6 @@ public class MusicAdapter extends ArrayAdapter<Music> {
     }
 
     private static class ViewHolder {
-        ImageView musicImage;
         TextView songName;
         TextView singer;
     }
