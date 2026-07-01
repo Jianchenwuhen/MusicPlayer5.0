@@ -22,6 +22,7 @@ import android.widget.Button;
 import android.widget.ListView;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -116,6 +117,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         filter.addAction("pauseimage");
         filter.addAction("playimage");
         filter.addAction("nextsong");
+        filter.addAction("playbackerror");
+        filter.addAction("playlistempty");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(broadcastReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         } else {
@@ -230,6 +233,15 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             } else if ("nextsong".equals(action)) {
                 Log.e("huizhong", "歌曲播放结束，接收到广播，发送下一首歌曲");
                 playNextSong();
+
+            } else if ("playbackerror".equals(action)) {
+                String msg = intent.getStringExtra("message");
+                if (msg != null && msg.length() > 0) {
+                    Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
+                }
+
+            } else if ("playlistempty".equals(action)) {
+                Toast.makeText(MainActivity.this, "播放列表为空，请先添加歌曲", Toast.LENGTH_SHORT).show();
             }
         }
     };
