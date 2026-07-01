@@ -51,6 +51,7 @@ public class MusicService extends Service {
     private PowerManager.WakeLock wakeLock;
     private SafeHandler handler;
     private boolean isPrepared = false; // 是否已 prepare 完成，未完成时禁止查询时长/进度，避免 MediaPlayer error -38
+    private int saveTick = 0; // 播放进度周期性持久化计数
 
     public static String currentTitle = "";
     public static String currentArtist = "";
@@ -82,6 +83,10 @@ public class MusicService extends Service {
                     Intent progressIntent = new Intent("seekbarprogress");
                     progressIntent.putExtra("seekbarprogress", service.getSafeCurrentPosition());
                     service.sendAppBroadcast(progressIntent);
+                    // 每约 3 秒持久化一次进度，供下次"恢复上次播放"用（含被强杀场景）
+                    if (++service.saveTick % 6 == 0) {
+                        service.savePlaybackState();
+                    }
                     sendEmptyMessageDelayed(UPDATE_PROGRESS, 500);
                     break;
                 case SET_SEEKBAR_MAX:
