@@ -58,6 +58,9 @@ public class PlaylistProvider extends ContentProvider {
 
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         long id = db.insert(PlaylistContract.TABLE_NAME, null, values);
+        if (id == -1) {
+            return null;
+        }
         Uri resultUri = ContentUris.withAppendedId(PlaylistContract.CONTENT_URI, id);
         notifyChange(uri);
         return resultUri;
