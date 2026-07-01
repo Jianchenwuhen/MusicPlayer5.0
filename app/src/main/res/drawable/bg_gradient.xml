@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  应用背景：深色渐变 + 双强调光晕（青左上 / 粉右上 / 底部品红辉光）。
+  纯矢量渐变，约 1KB，自适应任意屏幕，替代 1.3MB 的 AI 背景图。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 基础竖向深色渐变 -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="#0C1220"
+                android:centerColor="#090D18"
+                android:endColor="#05070D"
+                android:type="linear" />
+        </shape>
+    </item>
+
+    <!-- 左上：青色光晕 -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:centerX="0.14"
+                android:centerY="0.08"
+                android:gradientRadius="620dp"
+                android:startColor="#4438BDF8"
+                android:endColor="#0038BDF8"
+                android:type="radial" />
+        </shape>
+    </item>
+
+    <!-- 右上：品粉光晕 -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:centerX="0.9"
+                android:centerY="0.12"
+                android:gradientRadius="560dp"
+                android:startColor="#40F472B6"
+                android:endColor="#00F472B6"
+                android:type="radial" />
+        </shape>
+    </item>
+
+    <!-- 底部：品红辉光 -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:centerX="0.5"
+                android:centerY="1.02"
+                android:gradientRadius="720dp"
+                android:startColor="#33EC4899"
+                android:endColor="#00EC4899"
+                android:type="radial" />
+        </shape>
+    </item>
+</layer-list>

@@ -15,7 +15,7 @@
     <color name="accent_secondary_dim">#EC4899</color>
 
     <!-- 背景 & 玻璃面 -->
-    <color name="scrim">#99060A12</color>
+    <color name="scrim">#26060A12</color>
     <color name="window_background">#060A12</color>
     <color name="surface_glass">#990A1018</color>
     <color name="surface_glass_soft">#660A1018</color>
