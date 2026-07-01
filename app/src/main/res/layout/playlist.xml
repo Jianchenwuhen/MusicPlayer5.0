@@ -2,64 +2,78 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/music_bg_modern">
+    android:background="@drawable/bg_gradient">
 
     <View
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#88000000" />
+        android:background="@color/scrim" />
 
     <LinearLayout
+        android:id="@+id/contentRoot"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="18dp">
+        android:padding="@dimen/screen_padding">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/panel_glass"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="14dp">
+            style="@style/Panel.Glass">
 
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="播放列表"
-                android:textColor="#FFFFFFFF"
-                android:textSize="24sp"
-                android:textStyle="bold" />
+                style="@style/Text.Headline" />
 
             <Button
                 android:id="@+id/button2"
-                android:layout_width="92dp"
-                android:layout_height="42dp"
-                android:background="@drawable/button_secondary"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/button_height"
+                android:minWidth="0dp"
+                android:paddingLeft="@dimen/space_lg"
+                android:paddingRight="@dimen/space_lg"
                 android:text="播放"
-                android:textColor="#FFFFFFFF" />
+                style="@style/Widget.Button.Primary" />
 
             <Button
                 android:id="@+id/button6"
-                android:layout_width="92dp"
-                android:layout_height="42dp"
-                android:layout_marginLeft="10dp"
-                android:background="@drawable/button_primary"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/button_height"
+                android:layout_marginLeft="@dimen/space_sm"
+                android:minWidth="0dp"
+                android:paddingLeft="@dimen/space_lg"
+                android:paddingRight="@dimen/space_lg"
                 android:text="清空"
-                android:textColor="#FFFFFFFF" />
+                style="@style/Widget.Button.Secondary" />
         </LinearLayout>
 
         <ListView
             android:id="@+id/listView2"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/space_md"
             android:layout_weight="1"
             android:cacheColorHint="#00000000"
-            android:divider="#22FFFFFF"
+            android:divider="@color/stroke_soft"
             android:dividerHeight="8dp"
-            android:paddingTop="4dp"
-            android:paddingBottom="4dp" />
+            android:paddingTop="@dimen/space_xs"
+            android:paddingBottom="@dimen/space_xs" />
+
+        <TextView
+            android:id="@+id/emptyPlaylist"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="@dimen/space_md"
+            android:layout_weight="1"
+            android:background="@drawable/panel_glass"
+            android:gravity="center"
+            android:text="播放列表为空"
+            android:visibility="gone"
+            style="@style/Text.Body" />
     </LinearLayout>
 </FrameLayout>

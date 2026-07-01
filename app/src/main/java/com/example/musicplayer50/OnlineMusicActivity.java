@@ -6,12 +6,14 @@ import android.database.Cursor;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
+import android.view.KeyEvent;
 import android.view.View;
-import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
 import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -35,31 +37,33 @@ public class OnlineMusicActivity extends AppCompatActivity {
     };
 
     private EditText searchKeyword;
-    private TextView resultText;
-    private ListView onlineMusicListView;
-    private MusicAdapter onlineMusicAdapter;
-    private List<Music> onlineTracks;
+    private ListView onlineList;
+    private TextView onlineStatus;
+    private ProgressBar onlineProgress;
+
+    private final List<Music> results = new ArrayList<>();
+    private MusicAdapter adapter;
+    private LoadOnlineMusicTask currentTask;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.online_music);
 
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().hide();
-        }
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        UiUtils.setupEdgeToEdge(this);
+        UiUtils.applySystemBarInsets(findViewById(R.id.contentRoot));
 
         searchKeyword = (EditText) findViewById(R.id.searchKeyword);
-        resultText = (TextView) findViewById(R.id.onlineResult);
-        onlineMusicListView = (ListView) findViewById(R.id.onlineMusicListView);
-        onlineTracks = new ArrayList<Music>();
-        onlineMusicAdapter = new MusicAdapter(this, R.layout.musicitem, onlineTracks);
-        onlineMusicListView.setAdapter(onlineMusicAdapter);
-        onlineMusicListView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+        onlineList = (ListView) findViewById(R.id.onlineList);
+        onlineStatus = (TextView) findViewById(R.id.onlineStatus);
+        onlineProgress = (ProgressBar) findViewById(R.id.onlineProgress);
+
+        adapter = new MusicAdapter(this, R.layout.musicitem, results);
+        onlineList.setAdapter(adapter);
+        onlineList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                playOnlineTrack(onlineTracks.get(position));
+                playPreview(position);
             }
         });
 
@@ -67,15 +71,7 @@ public class OnlineMusicActivity extends AppCompatActivity {
         searchButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                String keyword = searchKeyword.getText().toString().trim();
-                if (keyword.length() == 0) {
-                    resultText.setText("请输入搜索关键词");
-                    onlineTracks.clear();
-                    onlineMusicAdapter.notifyDataSetChanged();
-                } else {
-                    resultText.setText("正在搜索: " + keyword);
-                    new LoadOnlineMusicTask().execute(keyword);
-                }
+                doSearch(searchKeyword.getText().toString().trim());
             }
         });
 
@@ -83,49 +79,80 @@ public class OnlineMusicActivity extends AppCompatActivity {
         loadButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                resultText.setText("正在获取在线推荐...");
-                new LoadOnlineMusicTask().execute();
+                startLoad(null);
+            }
+        });
+
+        // 软键盘“搜索”键
+        searchKeyword.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+            @Override
+            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
+                if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                    doSearch(searchKeyword.getText().toString().trim());
+                    return true;
+                }
+                return false;
             }
         });
     }
 
-    private void playOnlineTrack(Music music) {
-        if (music.getUrl() == null || music.getUrl().trim().length() == 0) {
-            Toast.makeText(this, "当前歌曲没有可播放链接", Toast.LENGTH_SHORT).show();
+    private void doSearch(String keyword) {
+        if (keyword.length() == 0) {
+            showStatus("请输入搜索关键词");
             return;
         }
+        startLoad(keyword);
+    }
 
-        addTrackToPlaylist(music);
+    /**
+     * keyword 为 null 表示随机推荐
+     */
+    private void startLoad(String keyword) {
+        if (currentTask != null) {
+            currentTask.cancel(true);
+        }
+        showLoading();
+        currentTask = new LoadOnlineMusicTask();
+        if (keyword == null) {
+            currentTask.execute();
+        } else {
+            currentTask.execute(keyword);
+        }
+    }
 
+    private void playPreview(int position) {
+        if (position < 0 || position >= results.size()) {
+            return;
+        }
+        Music music = results.get(position);
+        // 先加入播放列表，保证 MusicService 的上一首/下一首能把在线歌曲纳入队列
+        addToPlaylistIfAbsent(music);
         Intent intent = new Intent(this, MusicService.class);
         intent.setAction("startnew");
         intent.putExtra("url", music.getUrl());
         intent.putExtra("title", music.getTitle());
         intent.putExtra("artist", music.getArtist());
         startService(intent);
-        Toast.makeText(this, "正在播放: " + music.getTitle(), Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "正在播放预览：" + music.getTitle(), Toast.LENGTH_SHORT).show();
     }
 
-    private void addTrackToPlaylist(Music music) {
-        Cursor cursor = null;
+    /** 若该在线歌曲尚不在播放列表中，则插入，供上一首/下一首连贯切换 */
+    private void addToPlaylistIfAbsent(Music music) {
+        Cursor cursor = getContentResolver().query(
+                PlaylistContract.CONTENT_URI,
+                null,
+                PlaylistContract.COLUMN_TITLE + " = ? AND " + PlaylistContract.COLUMN_URL + " = ?",
+                new String[]{music.getTitle(), music.getUrl()},
+                null);
         try {
-            cursor = getContentResolver().query(
-                    PlaylistContract.CONTENT_URI,
-                    null,
-                    PlaylistContract.COLUMN_URL + "=?",
-                    new String[]{music.getUrl()},
-                    null
-            );
-
-            if (cursor != null && cursor.moveToFirst()) {
-                return;
+            boolean exists = cursor != null && cursor.moveToFirst();
+            if (!exists) {
+                ContentValues values = new ContentValues();
+                values.put(PlaylistContract.COLUMN_TITLE, music.getTitle());
+                values.put(PlaylistContract.COLUMN_ARTIST, music.getArtist());
+                values.put(PlaylistContract.COLUMN_URL, music.getUrl());
+                getContentResolver().insert(PlaylistContract.CONTENT_URI, values);
             }
-
-            ContentValues values = new ContentValues();
-            values.put(PlaylistContract.COLUMN_TITLE, music.getTitle());
-            values.put(PlaylistContract.COLUMN_ARTIST, music.getArtist());
-            values.put(PlaylistContract.COLUMN_URL, music.getUrl());
-            getContentResolver().insert(PlaylistContract.CONTENT_URI, values);
         } finally {
             if (cursor != null) {
                 cursor.close();
@@ -133,9 +160,39 @@ public class OnlineMusicActivity extends AppCompatActivity {
         }
     }
 
-    private class LoadOnlineMusicTask extends AsyncTask<String, Void, OnlineResult> {
+    // ==================== 三态切换 ====================
+
+    private void showLoading() {
+        onlineProgress.setVisibility(View.VISIBLE);
+        onlineList.setVisibility(View.GONE);
+        onlineStatus.setVisibility(View.GONE);
+    }
+
+    private void showStatus(String text) {
+        onlineStatus.setText(text);
+        onlineStatus.setVisibility(View.VISIBLE);
+        onlineList.setVisibility(View.GONE);
+        onlineProgress.setVisibility(View.GONE);
+    }
+
+    private void showResults() {
+        onlineList.setVisibility(View.VISIBLE);
+        onlineStatus.setVisibility(View.GONE);
+        onlineProgress.setVisibility(View.GONE);
+    }
+
+    // ==================== 网络请求 ====================
+
+    private static class SearchResult {
+        List<Music> tracks = new ArrayList<>();
+        String keyword = "";
+        String error;
+    }
+
+    private class LoadOnlineMusicTask extends AsyncTask<String, Void, SearchResult> {
         @Override
-        protected OnlineResult doInBackground(String... keywords) {
+        protected SearchResult doInBackground(String... keywords) {
+            SearchResult result = new SearchResult();
             HttpURLConnection connection = null;
             BufferedReader reader = null;
 
@@ -146,9 +203,10 @@ public class OnlineMusicActivity extends AppCompatActivity {
                 } else {
                     keyword = SEARCH_WORDS[new Random().nextInt(SEARCH_WORDS.length)];
                 }
+                result.keyword = keyword;
 
                 String encodedKeyword = URLEncoder.encode(keyword, "UTF-8");
-                URL url = new URL("https://itunes.apple.com/search?term=" + encodedKeyword + "&media=music&entity=song&limit=8");
+                URL url = new URL("https://itunes.apple.com/search?term=" + encodedKeyword + "&media=music&limit=20");
                 connection = (HttpURLConnection) url.openConnection();
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(8000);
@@ -163,33 +221,23 @@ public class OnlineMusicActivity extends AppCompatActivity {
                 }
 
                 JSONObject jsonObject = new JSONObject(builder.toString());
-                JSONArray results = jsonObject.getJSONArray("results");
-                List<Music> musics = new ArrayList<Music>();
-
-                for (int i = 0; i < results.length(); i++) {
-                    JSONObject item = results.getJSONObject(i);
-                    String previewUrl = item.optString("previewUrl", "");
-                    if (previewUrl.length() == 0) {
-                        continue;
+                JSONArray items = jsonObject.getJSONArray("results");
+                for (int i = 0; i < items.length(); i++) {
+                    JSONObject item = items.getJSONObject(i);
+                    String preview = item.optString("previewUrl", "");
+                    if (preview.length() == 0) {
+                        continue; // 没有可播放预览的条目跳过
                     }
-
                     Music music = new Music();
                     music.setTitle(item.optString("trackName", "未知歌曲"));
                     music.setArtist(item.optString("artistName", "未知歌手"));
-                    music.setUrl(previewUrl);
-                    music.setDuration(item.optLong("trackTimeMillis", 0L));
-                    musics.add(music);
+                    music.setUrl(preview);
+                    result.tracks.add(music);
                 }
-
-                String message;
-                if (musics.isEmpty()) {
-                    message = "没有找到可播放的在线歌曲";
-                } else {
-                    message = "找到 " + musics.size() + " 首在线歌曲，点击列表即可播放";
-                }
-                return new OnlineResult(keyword, message, musics);
+                return result;
             } catch (Exception e) {
-                return new OnlineResult("", "网络请求失败，请检查网络后重试\n\n" + e.getMessage(), new ArrayList<Music>());
+                result.error = "网络请求失败，请检查手机网络后重试";
+                return result;
             } finally {
                 try {
                     if (reader != null) {
@@ -204,27 +252,27 @@ public class OnlineMusicActivity extends AppCompatActivity {
         }
 
         @Override
-        protected void onPostExecute(OnlineResult result) {
-            if (result.keyword.length() == 0) {
-                resultText.setText(result.message);
-            } else {
-                resultText.setText("关键词: " + result.keyword + "\n" + result.message);
+        protected void onPostExecute(SearchResult result) {
+            if (result.error != null) {
+                showStatus(result.error);
+                return;
             }
-            onlineTracks.clear();
-            onlineTracks.addAll(result.musics);
-            onlineMusicAdapter.notifyDataSetChanged();
+            if (result.tracks.isEmpty()) {
+                showStatus("没有搜索到 “" + result.keyword + "” 相关歌曲");
+                return;
+            }
+            results.clear();
+            results.addAll(result.tracks);
+            adapter.notifyDataSetChanged();
+            showResults();
         }
     }
 
-    private static class OnlineResult {
-        private final String keyword;
-        private final String message;
-        private final List<Music> musics;
-
-        OnlineResult(String keyword, String message, List<Music> musics) {
-            this.keyword = keyword;
-            this.message = message;
-            this.musics = musics;
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (currentTask != null) {
+            currentTask.cancel(true);
         }
     }
 }

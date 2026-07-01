@@ -63,6 +63,9 @@ public class PlaylistProvider extends ContentProvider {
 
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         long id = db.insert(PlaylistContract.TABLE_NAME, null, values);
+        if (id == -1) {
+            return null; // 插入失败保护（找回我们版本的这道防线）
+        }
         Uri resultUri = ContentUris.withAppendedId(PlaylistContract.CONTENT_URI, id);
         notifyChange(uri);
         // 发广播通知其他组件播放列表已变化

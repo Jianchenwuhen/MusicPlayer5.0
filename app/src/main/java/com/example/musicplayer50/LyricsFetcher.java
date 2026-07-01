@@ -28,6 +28,7 @@ public class LyricsFetcher {
      * 从网络API获取歌词，已去除LRC时间戳（纯文本展示用）
      */
     public static String fetchLyrics(String artist, String title) {
+        artist = normalizeArtist(artist); // 过滤"未知歌手"等占位，避免污染精确搜索
         // 1. lrclib.net - 覆盖广，中日英都有
         String lyrics = fetchFromLrclib(artist, title);
         if (lyrics != null) return lyrics;
@@ -37,8 +38,13 @@ public class LyricsFetcher {
         lyrics = fetchFromQQMusic(artist, title);
         if (lyrics != null) return lyrics;
 
-        // 3. lyrics.ovh - 最后兜底
-        Log.e("huizhong", "QQ音乐未找到，尝试lyrics.ovh...");
+        // 3. 网易云 - 中文/本地歌按歌名搜
+        Log.e("huizhong", "QQ音乐未找到，尝试网易云...");
+        String neteaseLrc = fetchNeteaseLrcRaw(artist, title);
+        if (neteaseLrc != null) return cleanLrc(neteaseLrc);
+
+        // 4. lyrics.ovh - 最后兜底（英文）
+        Log.e("huizhong", "网易云未找到，尝试lyrics.ovh...");
         return fetchFromLyricsOvh(artist, title);
     }
 
@@ -47,6 +53,7 @@ public class LyricsFetcher {
      * 优先从 QQ音乐/lrclib 获取带时间戳的 LRC
      */
     public static String fetchLrcRaw(String artist, String title) {
+        artist = normalizeArtist(artist); // 过滤"未知歌手"等占位，避免污染精确搜索
         // 1. QQ音乐 - LRC 时间戳最全
         String lrc = fetchQQMusicLrcRaw(artist, title);
         if (lrc != null) return lrc;
@@ -56,7 +63,12 @@ public class LyricsFetcher {
         lrc = fetchLrclibLrcRaw(artist, title);
         if (lrc != null) return lrc;
 
-        // 3. lyrics.ovh 没有时间戳，跳过，返回 null 表示无同步歌词
+        // 3. 网易云 - 中文/本地歌按歌名搜，命中率高
+        Log.e("huizhong", "lrclib未找到，尝试网易云...");
+        lrc = fetchNeteaseLrcRaw(artist, title);
+        if (lrc != null) return lrc;
+
+        // 都没有带时间戳的 LRC
         Log.e("huizhong", "无LRC同步歌词");
         return null;
     }
@@ -429,6 +441,130 @@ public class LyricsFetcher {
 
         if (!hasContent) return text;
         return result.toString().trim();
+    }
+
+    // ==================== 网易云（中文/本地歌按歌名搜，命中率高） ====================
+
+    /** 网易云：返回带时间戳的原始 LRC；无则 null。对"未知歌手"的本地中文歌尤其有效 */
+    private static String fetchNeteaseLrcRaw(String artist, String title) {
+        long id = searchNeteaseId(artist, title);
+        if (id <= 0) {
+            return null;
+        }
+        HttpURLConnection connection = null;
+        try {
+            String urlString = "https://music.163.com/api/song/lyric?id=" + id + "&lv=1&kv=1&tv=-1";
+            connection = openNetease(urlString);
+            if (connection.getResponseCode() != 200) {
+                return null;
+            }
+            JSONObject root = new JSONObject(readBody(connection));
+            JSONObject lrc = root.optJSONObject("lrc");
+            if (lrc == null) {
+                return null;
+            }
+            String lyric = lrc.optString("lyric", "");
+            if (lyric.isEmpty()) {
+                return null;
+            }
+            Log.e("huizhong", "网易云歌词成功! 长度=" + lyric.length());
+            return stripLrcMetadata(lyric);
+        } catch (Exception e) {
+            Log.e("huizhong", "网易云歌词异常: " + e.getMessage());
+            return null;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private static long searchNeteaseId(String artist, String title) {
+        String prefix = (artist == null || artist.isEmpty()) ? "" : artist + " ";
+        long id = neteaseQuery(prefix + title);
+        if (id > 0) {
+            return id;
+        }
+        return neteaseQuery(title);
+    }
+
+    private static long neteaseQuery(String query) {
+        HttpURLConnection connection = null;
+        try {
+            String urlString = "https://music.163.com/api/search/get/web?csrf_token=&type=1&offset=0&total=true&limit=1&s="
+                    + URLEncoder.encode(query.trim(), "UTF-8");
+            connection = openNetease(urlString);
+            if (connection.getResponseCode() != 200) {
+                return -1;
+            }
+            JSONObject root = new JSONObject(readBody(connection));
+            JSONObject result = root.optJSONObject("result");
+            if (result == null) {
+                return -1;
+            }
+            JSONArray songs = result.optJSONArray("songs");
+            if (songs == null || songs.length() == 0) {
+                return -1;
+            }
+            return songs.getJSONObject(0).optLong("id", -1);
+        } catch (Exception e) {
+            return -1;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private static HttpURLConnection openNetease(String urlString) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(urlString).openConnection();
+        c.setConnectTimeout(CONNECT_TIMEOUT);
+        c.setReadTimeout(READ_TIMEOUT);
+        c.setRequestProperty("User-Agent",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36");
+        c.setRequestProperty("Referer", "https://music.163.com/");
+        c.setRequestMethod("GET");
+        return c;
+    }
+
+    private static String readBody(HttpURLConnection c) throws Exception {
+        BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream(), "UTF-8"));
+        try {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = r.readLine()) != null) {
+                sb.append(line);
+            }
+            return sb.toString();
+        } finally {
+            r.close();
+        }
+    }
+
+    // ==================== 歌手名归一化 ====================
+
+    /**
+     * 空 / 占位（未知歌手、unknown 等）一律视为"无歌手"，返回空串。
+     * 避免本地文件的 "未知歌手/<unknown>" 拼进精确搜索导致 0 结果。包级可见便于单测。
+     */
+    static String normalizeArtist(String artist) {
+        if (artist == null) {
+            return "";
+        }
+        String trimmed = artist.trim();
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+        String lower = trimmed.toLowerCase();
+        if (lower.equals("unknown")
+                || lower.equals("<unknown>")
+                || lower.equals("unknown artist")
+                || trimmed.equals("未知歌手")
+                || trimmed.equals("未知艺术家")
+                || trimmed.equals("未知")) {
+            return "";
+        }
+        return trimmed;
     }
 
     // ==================== 资源清理 ====================

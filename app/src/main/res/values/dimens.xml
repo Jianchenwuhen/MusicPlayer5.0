@@ -1,5 +1,40 @@
 <resources>
-    <!-- Default screen margins, per the Android Design guidelines. -->
+    <!-- ============================================================
+         MusicPlayer 设计变量 · 尺寸刻度
+         ============================================================ -->
+
+    <!-- 间距刻度 -->
+    <dimen name="space_xs">4dp</dimen>
+    <dimen name="space_sm">8dp</dimen>
+    <dimen name="space_md">12dp</dimen>
+    <dimen name="space_lg">16dp</dimen>
+    <dimen name="space_xl">22dp</dimen>
+
+    <!-- 统一屏边距 (收敛原 22/18) -->
+    <dimen name="screen_padding">20dp</dimen>
+    <dimen name="panel_padding">16dp</dimen>
+
+    <!-- 圆角刻度 -->
+    <dimen name="radius_sm">8dp</dimen>
+    <dimen name="radius_md">12dp</dimen>
+    <dimen name="radius_lg">16dp</dimen>
+
+    <!-- 字号刻度 -->
+    <dimen name="text_display">28sp</dimen>
+    <dimen name="text_headline">24sp</dimen>
+    <dimen name="text_title">22sp</dimen>
+    <dimen name="text_subtitle">18sp</dimen>
+    <dimen name="text_body">15sp</dimen>
+    <dimen name="text_caption">13sp</dimen>
+
+    <!-- 控件尺寸 -->
+    <dimen name="control_primary">66dp</dimen>
+    <dimen name="control_secondary">54dp</dimen>
+    <dimen name="button_height">44dp</dimen>
+    <dimen name="list_item_height">64dp</dimen>
+    <dimen name="album_thumb">44dp</dimen>
+
+    <!-- 兼容旧引用 (AS 模板生成，values-w820dp 里有对应覆盖) -->
     <dimen name="activity_horizontal_margin">16dp</dimen>
     <dimen name="activity_vertical_margin">16dp</dimen>
 </resources>

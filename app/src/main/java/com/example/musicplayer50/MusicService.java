@@ -13,6 +13,7 @@ import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
+import android.net.Uri;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
@@ -49,6 +50,8 @@ public class MusicService extends Service {
     private MyBinder myBinder;
     private PowerManager.WakeLock wakeLock;
     private SafeHandler handler;
+    private boolean isPrepared = false; // 是否已 prepare 完成，未完成时禁止查询时长/进度，避免 MediaPlayer error -38
+    private int saveTick = 0; // 播放进度周期性持久化计数
 
     public static String currentTitle = "";
     public static String currentArtist = "";
@@ -79,13 +82,17 @@ public class MusicService extends Service {
                 case UPDATE_PROGRESS:
                     Intent progressIntent = new Intent("seekbarprogress");
                     progressIntent.putExtra("seekbarprogress", service.getSafeCurrentPosition());
-                    service.sendBroadcast(progressIntent);
+                    service.sendAppBroadcast(progressIntent);
+                    // 每约 3 秒持久化一次进度，供下次"恢复上次播放"用（含被强杀场景）
+                    if (++service.saveTick % 6 == 0) {
+                        service.savePlaybackState();
+                    }
                     sendEmptyMessageDelayed(UPDATE_PROGRESS, 500);
                     break;
                 case SET_SEEKBAR_MAX:
                     Intent maxIntent = new Intent("seekbarmaxprogress");
                     maxIntent.putExtra("seekbarmaxprogress", service.getSafeDuration());
-                    service.sendBroadcast(maxIntent);
+                    service.sendAppBroadcast(maxIntent);
                     break;
                 default:
                     break;
@@ -117,9 +124,16 @@ public class MusicService extends Service {
         handler = new SafeHandler(this);
         initMediaPlayer();
         createNotificationChannel();
-        registerReceiver(notifyReceiver, new IntentFilter(ACTION_NOTIFY_PLAY));
-        registerReceiver(notifyReceiver, new IntentFilter(ACTION_NOTIFY_NEXT));
-        registerReceiver(notifyReceiver, new IntentFilter(ACTION_NOTIFY_PREV));
+        // Android 13+ 注册动态广播必须显式声明导出与否；应用内部广播 → NOT_EXPORTED
+        IntentFilter notifyFilter = new IntentFilter();
+        notifyFilter.addAction(ACTION_NOTIFY_PLAY);
+        notifyFilter.addAction(ACTION_NOTIFY_NEXT);
+        notifyFilter.addAction(ACTION_NOTIFY_PREV);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(notifyReceiver, notifyFilter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(notifyReceiver, notifyFilter);
+        }
         restorePlaybackState();
     }
 
@@ -140,12 +154,12 @@ public class MusicService extends Service {
                 mediaPlayer.pause();
                 releaseWakeLock();
                 isPlaying = false;
-                sendBroadcast(new Intent("pauseimage"));
+                sendAppBroadcast(new Intent("pauseimage"));
             } else {
                 mediaPlayer.start();
                 acquireWakeLock();
                 isPlaying = true;
-                sendBroadcast(new Intent("playimage"));
+                sendAppBroadcast(new Intent("playimage"));
                 handler.sendEmptyMessage(UPDATE_PROGRESS);
             }
             savePlaybackState();
@@ -165,35 +179,28 @@ public class MusicService extends Service {
     }
 
     public void restoreIfAvailable() {
+        if (isPrepared) {
+            return; // 已有歌曲加载/播放中，不覆盖当前会话
+        }
         restorePlaybackState();
         if (currentUrl == null || currentUrl.trim().length() == 0) {
             return;
         }
 
         final int restorePosition = getPersistedPosition();
-        final boolean shouldResumePlayback = isPlaying;
 
         try {
             resetPlayerForNewSource();
-            mediaPlayer.setDataSource(currentUrl);
-            mediaPlayer.prepareAsync();
             mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                 @Override
                 public void onPrepared(MediaPlayer mp) {
+                    isPrepared = true;
                     if (restorePosition > 0) {
                         mp.seekTo(restorePosition);
                     }
-
-                    if (shouldResumePlayback) {
-                        mp.start();
-                        acquireWakeLock();
-                        isPlaying = true;
-                        sendBroadcast(new Intent("playimage"));
-                        handler.sendEmptyMessage(UPDATE_PROGRESS);
-                    } else {
-                        isPlaying = false;
-                        sendBroadcast(new Intent("pauseimage"));
-                    }
+                    // 只恢复上次歌曲与进度，停在暂停，不自动出声（用户可手动点播放继续）
+                    isPlaying = false;
+                    sendAppBroadcast(new Intent("pauseimage"));
 
                     handler.sendEmptyMessage(SET_SEEKBAR_MAX);
                     broadcastTrackMetadata();
@@ -202,6 +209,13 @@ public class MusicService extends Service {
                     updateNotification();
                 }
             });
+            // 关键修复：content:// 本地 URI 用带 Context 的重载
+            if (currentUrl.startsWith("content://")) {
+                mediaPlayer.setDataSource(getApplicationContext(), Uri.parse(currentUrl));
+            } else {
+                mediaPlayer.setDataSource(currentUrl);
+            }
+            mediaPlayer.prepareAsync();
         } catch (Exception e) {
             Log.e(TAG, "restore playback failed", e);
             notifyPlaybackError("无法恢复上次播放的歌曲");
@@ -211,21 +225,28 @@ public class MusicService extends Service {
     public void startnew(String path) {
         try {
             resetPlayerForNewSource();
-            mediaPlayer.setDataSource(path);
-            mediaPlayer.prepareAsync();
+            // 先设监听再 prepareAsync，避免时序竞态
             mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                 @Override
                 public void onPrepared(MediaPlayer mp) {
+                    isPrepared = true;
                     mp.start();
                     acquireWakeLock();
                     isPlaying = true;
-                    sendBroadcast(new Intent("playimage"));
+                    sendAppBroadcast(new Intent("playimage"));
                     handler.sendEmptyMessage(SET_SEEKBAR_MAX);
                     handler.sendEmptyMessage(UPDATE_PROGRESS);
                     savePlaybackState();
                     updateNotification();
                 }
             });
+            // 关键修复：本地 content:// URI 必须用带 Context 的重载，否则 MediaPlayer 报 error -38
+            if (path != null && path.startsWith("content://")) {
+                mediaPlayer.setDataSource(getApplicationContext(), Uri.parse(path));
+            } else {
+                mediaPlayer.setDataSource(path);
+            }
+            mediaPlayer.prepareAsync();
         } catch (Exception e) {
             Log.e(TAG, "start new track failed", e);
             notifyPlaybackError("当前歌曲无法播放");
@@ -308,6 +329,7 @@ public class MusicService extends Service {
             @Override
             public boolean onError(MediaPlayer mp, int what, int extra) {
                 Log.e(TAG, "playback error what=" + what + ", extra=" + extra);
+                isPrepared = false;
                 stopPlaybackState();
                 notifyPlaybackError("播放失败，请尝试切换其他歌曲");
                 return true;
@@ -316,6 +338,7 @@ public class MusicService extends Service {
     }
 
     private void resetPlayerForNewSource() {
+        isPrepared = false;
         if (mediaPlayer != null) {
             try {
                 if (mediaPlayer.isPlaying()) {
@@ -366,6 +389,7 @@ public class MusicService extends Service {
         );
 
         Intent playIntent = new Intent(ACTION_NOTIFY_PLAY);
+        playIntent.setPackage(getPackageName()); // 送达本应用 NOT_EXPORTED 接收器（Android 14）
         PendingIntent playPI = PendingIntent.getBroadcast(
                 this,
                 0,
@@ -374,6 +398,7 @@ public class MusicService extends Service {
         );
 
         Intent nextIntent = new Intent(ACTION_NOTIFY_NEXT);
+        nextIntent.setPackage(getPackageName());
         PendingIntent nextPI = PendingIntent.getBroadcast(
                 this,
                 1,
@@ -382,6 +407,7 @@ public class MusicService extends Service {
         );
 
         Intent prevIntent = new Intent(ACTION_NOTIFY_PREV);
+        prevIntent.setPackage(getPackageName());
         PendingIntent prevPI = PendingIntent.getBroadcast(
                 this,
                 2,
@@ -459,6 +485,7 @@ public class MusicService extends Service {
     }
 
     private void stopPlaybackState() {
+        isPrepared = false;
         if (mediaPlayer != null) {
             try {
                 if (mediaPlayer.isPlaying()) {
@@ -472,10 +499,19 @@ public class MusicService extends Service {
         releaseWakeLock();
         handler.removeMessages(UPDATE_PROGRESS);
         isPlaying = false;
-        sendBroadcast(new Intent("pauseimage"));
+        sendAppBroadcast(new Intent("pauseimage"));
         broadcastProgress(0);
         savePlaybackState();
         updateNotification();
+    }
+
+    /**
+     * 发应用内广播：设 package，保证能送达本应用 RECEIVER_NOT_EXPORTED 的动态接收器
+     * （Android 14 下隐式广播默认不投递给 NOT_EXPORTED 接收器，UI 进度/图标就不刷新）
+     */
+    private void sendAppBroadcast(Intent intent) {
+        intent.setPackage(getPackageName());
+        super.sendBroadcast(intent);
     }
 
     private void broadcastTrackMetadata() {
@@ -483,23 +519,23 @@ public class MusicService extends Service {
         titleIntent.putExtra("title", currentTitle);
         titleIntent.putExtra("url", currentUrl);
         titleIntent.putExtra("artist", currentArtist);
-        sendBroadcast(titleIntent);
+        sendAppBroadcast(titleIntent);
     }
 
     private void broadcastProgress(int progress) {
         Intent progressIntent = new Intent("seekbarprogress");
         progressIntent.putExtra("seekbarprogress", progress);
-        sendBroadcast(progressIntent);
+        sendAppBroadcast(progressIntent);
     }
 
     private void notifyPlaybackError(String message) {
         Intent errorIntent = new Intent(ACTION_PLAYBACK_ERROR);
         errorIntent.putExtra("message", safeString(message));
-        sendBroadcast(errorIntent);
+        sendAppBroadcast(errorIntent);
     }
 
     private void notifyPlaylistEmpty() {
-        sendBroadcast(new Intent(ACTION_PLAYLIST_EMPTY));
+        sendAppBroadcast(new Intent(ACTION_PLAYLIST_EMPTY));
     }
 
     private void savePlaybackState() {
@@ -525,8 +561,36 @@ public class MusicService extends Service {
         return getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getInt(KEY_POSITION, 0);
     }
 
+    // ==================== 供前端(MainActivity)读取状态：兼容原 UI 接口 ====================
+    public String getCurrentTitle() {
+        return currentTitle;
+    }
+
+    public String getCurrentArtist() {
+        return currentArtist;
+    }
+
+    public int getDuration() {
+        return getSafeDuration();
+    }
+
+    public int getCurrentPosition() {
+        return getSafeCurrentPosition();
+    }
+
+    public boolean isPlaying() {
+        if (mediaPlayer == null || !isPrepared) {
+            return false;
+        }
+        try {
+            return mediaPlayer.isPlaying();
+        } catch (IllegalStateException e) {
+            return false;
+        }
+    }
+
     private int getSafeCurrentPosition() {
-        if (mediaPlayer == null) {
+        if (mediaPlayer == null || !isPrepared) {
             return 0;
         }
         try {
@@ -537,7 +601,7 @@ public class MusicService extends Service {
     }
 
     private int getSafeDuration() {
-        if (mediaPlayer == null) {
+        if (mediaPlayer == null || !isPrepared) {
             return 0;
         }
         try {

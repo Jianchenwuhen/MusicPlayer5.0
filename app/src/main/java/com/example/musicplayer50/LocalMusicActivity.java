@@ -1,21 +1,17 @@
 package com.example.musicplayer50;
 
 import android.Manifest;
-import android.app.Service;
-import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.database.ContentObserver;
 import android.database.Cursor;
-import android.net.Uri;
+import android.media.MediaScannerConnection;
+import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.provider.MediaStore;
@@ -24,68 +20,51 @@ import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.View;
-import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.ListView;
+import android.widget.Toast;
 
-import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Created by 惠中 on 2016/12/12.
+ */
 public class LocalMusicActivity extends AppCompatActivity {
-
-    private static final int REQUEST_EXTERNAL_STORAGE = 1;
-    private static final String[] PERMISSIONS_STORAGE = {
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE
-    };
 
     private MusicService musicService;
     private MusicAdapter adapter;
-    private ListView listView;
-    private List<Music> musics;
-    private ContentObserver mediaObserver;
-
-    private final ServiceConnection conn = new ServiceConnection() {
+    ListView listView;
+    private ServiceConnection conn = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             musicService = ((MusicService.MyBinder) service).getService();
         }
-
         @Override
         public void onServiceDisconnected(ComponentName name) {
-            musicService = null;
         }
     };
-
-    private final BroadcastReceiver listChangeReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            Log.e("huizhong", "LocalMusicActivity received playlist change");
-            loadMusicList();
-        }
-    };
+    private static final int REQUEST_AUDIO_PERMISSION = 1;
+    private List<Music> musics;
+    private ContentObserver mediaObserver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.localmusic);
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().hide();
-        }
-        getWindow().setFlags(
-                WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                WindowManager.LayoutParams.FLAG_FULLSCREEN
-        );
+        UiUtils.setupEdgeToEdge(this);
+        UiUtils.applySystemBarInsets(findViewById(R.id.contentRoot));
 
         Intent intent = new Intent(this, MusicService.class);
         bindService(intent, conn, Context.BIND_AUTO_CREATE);
 
         listView = (ListView) findViewById(R.id.listView);
-        ensureStoragePermissions();
+        listView.setEmptyView(findViewById(R.id.emptyLocalMusic));
+        requestAudioPermissionIfNeeded();
 
-        Button playButton = (Button) findViewById(R.id.button);
-        playButton.setOnClickListener(new View.OnClickListener() {
+        Button button = (Button)findViewById(R.id.button);
+        button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 if (musicService != null) {
@@ -93,22 +72,24 @@ public class LocalMusicActivity extends AppCompatActivity {
                 }
             }
         });
-
-        Button playlistButton = (Button) findViewById(R.id.button3);
-        playlistButton.setOnClickListener(new View.OnClickListener() {
+        Button button3 = (Button)findViewById(R.id.button3);
+        button3.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                startActivity(new Intent(LocalMusicActivity.this, playlist.class));
+                Intent intent3 = new Intent(LocalMusicActivity.this,playlist.class);
+                startActivity(intent3);
             }
         });
 
+        // 首次加载音乐列表
         loadMusicList();
 
+        // 注册 ContentObserver：系统媒体库一有变化就自动刷新列表
         mediaObserver = new ContentObserver(new Handler()) {
             @Override
             public void onChange(boolean selfChange) {
                 super.onChange(selfChange);
-                Log.e("huizhong", "MediaStore changed, refreshing local music list");
+                Log.e("huizhong", "MediaStore 发生变化，自动刷新本地音乐列表");
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
@@ -119,122 +100,116 @@ public class LocalMusicActivity extends AppCompatActivity {
         };
         getContentResolver().registerContentObserver(
                 MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                true,
-                mediaObserver
-        );
+                true, mediaObserver);
 
-        IntentFilter listFilter = new IntentFilter(PlaylistProvider.ACTION_PLAYLIST_CHANGED);
-        registerReceiver(listChangeReceiver, listFilter);
-
-        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+        listView.setOnItemClickListener (new AdapterView.OnItemClickListener() {
             @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id){
+                Log.e("huizhong", "onitemclick");
+                if (musics == null || position < 0 || position >= musics.size()) {
+                    return;
+                }
                 Music music = musics.get(position);
                 String url = music.getUrl();
                 String title = music.getTitle();
                 String artist = music.getArtist();
 
-                addTrackToPlaylist(title, artist, url);
-
-                Intent playIntent = new Intent("startnew");
-                playIntent.putExtra("url", url);
-                playIntent.putExtra("title", title);
-                playIntent.putExtra("artist", artist);
-
-                Intent explicitIntent = createExplicitFromImplicitIntent(LocalMusicActivity.this, playIntent);
-                if (explicitIntent != null) {
-                    bindService(explicitIntent, conn, Service.BIND_AUTO_CREATE);
-                    startService(explicitIntent);
+                Cursor cursor = getContentResolver().query(
+                        PlaylistContract.CONTENT_URI,
+                        null,
+                        PlaylistContract.COLUMN_TITLE + " = ? AND " + PlaylistContract.COLUMN_URL + " = ?",
+                        new String[]{title, url},
+                        null);
+                try {
+                    Log.e("huizhong","当前歌曲的title是："+title );
+                    boolean exists = cursor != null && cursor.moveToFirst();
+                    Log.e("huizhong","当前歌曲是否存在 "+exists );
+                    if(!exists) {
+                        Log.e("huizhong", "创建键");
+                        ContentValues values = new ContentValues();
+                        values.put(PlaylistContract.COLUMN_TITLE, title);
+                        values.put(PlaylistContract.COLUMN_ARTIST, artist);
+                        values.put(PlaylistContract.COLUMN_URL, url);
+                        getContentResolver().insert(PlaylistContract.CONTENT_URI, values);
+                        Log.e("huizhong", "成功插入login表");
+                    }
+                } finally {
+                    if (cursor != null) {
+                        cursor.close();
+                    }
                 }
+                Intent intent = new Intent(LocalMusicActivity.this, MusicService.class);
+                intent.setAction("startnew");
+                intent.putExtra("url",url);
+                intent.putExtra("title",title);
+                intent.putExtra("artist",artist);
+
+                startService(intent);
             }
         });
     }
-
-    private void ensureStoragePermissions() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(
-                    this,
-                    new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
-                    REQUEST_EXTERNAL_STORAGE
-            );
-        }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(
-                    this,
-                    new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                    REQUEST_EXTERNAL_STORAGE
-            );
-        }
-    }
-
-    private void addTrackToPlaylist(String title, String artist, String url) {
-        Cursor cursor = null;
-        try {
-            cursor = getContentResolver().query(
-                    PlaylistContract.CONTENT_URI,
-                    null,
-                    PlaylistContract.COLUMN_URL + "=?",
-                    new String[]{url},
-                    null
-            );
-            if (cursor != null && cursor.moveToFirst()) {
-                Log.e("huizhong", "Track already exists in playlist, skip by url");
-                return;
-            }
-
-            ContentValues values = new ContentValues();
-            values.put(PlaylistContract.COLUMN_TITLE, title);
-            values.put(PlaylistContract.COLUMN_ARTIST, artist);
-            values.put(PlaylistContract.COLUMN_URL, url);
-            getContentResolver().insert(PlaylistContract.CONTENT_URI, values);
-        } finally {
-            if (cursor != null) {
-                cursor.close();
-            }
-        }
-    }
-
     @Override
     protected void onResume() {
         super.onResume();
-        loadMusicList();
+        // 主动触发系统扫描标准音乐目录，让新拖入的 MP3 尽快被 MediaStore 收录
         triggerMediaScan();
+        // 每次回到此界面时重新查询（覆盖从别的 Activity 返回的场景）
+        loadMusicList();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        unregisterReceiver(listChangeReceiver);
         if (mediaObserver != null) {
             getContentResolver().unregisterContentObserver(mediaObserver);
         }
         unbindService(conn);
     }
 
+    /**
+     * 主动通知系统扫描 Music / Download 目录中的新媒体文件
+     */
     private void triggerMediaScan() {
         try {
+            String root = android.os.Environment.getExternalStorageDirectory().getPath();
             String[] scanDirs = {
-                    Environment.getExternalStorageDirectory().getPath() + "/Music",
-                    Environment.getExternalStorageDirectory().getPath() + "/Download",
-                    Environment.getExternalStorageDirectory().getPath() + "/Alarms",
-                    Environment.getExternalStorageDirectory().getPath() + "/Notifications"
+                    root + "/Music",
+                    root + "/Download",
+                    root + "/Alarms",
+                    root + "/Notifications",
             };
-            for (String dir : scanDirs) {
-                File file = new File(dir);
-                if (file.exists() && file.isDirectory()) {
-                    Intent intent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
-                    intent.setData(Uri.fromFile(file));
-                    sendBroadcast(intent);
-                }
-            }
+            MediaScannerConnection.scanFile(
+                    this,
+                    scanDirs,
+                    null,
+                    new MediaScannerConnection.OnScanCompletedListener() {
+                        @Override
+                        public void onScanCompleted(String path, android.net.Uri uri) {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    loadMusicList();
+                                }
+                            });
+                        }
+                    });
         } catch (Exception e) {
-            Log.e("huizhong", "Trigger media scan failed: " + e.getMessage());
+            Log.e("huizhong", "触发媒体扫描失败: " + e.getMessage());
         }
     }
 
+    /**
+     * 从 MediaStore 重新查询本地音乐，刷新 ListView
+     */
     private void loadMusicList() {
+        if (!hasAudioPermission()) {
+            musics = new ArrayList<Music>();
+            if (adapter != null) {
+                adapter.clear();
+                adapter.notifyDataSetChanged();
+            }
+            return;
+        }
         Findmusic findmusic = new Findmusic();
         musics = findmusic.getmusics(getContentResolver());
         if (adapter == null) {
@@ -247,18 +222,32 @@ public class LocalMusicActivity extends AppCompatActivity {
         }
     }
 
-    public static Intent createExplicitFromImplicitIntent(Context context, Intent implicitIntent) {
-        PackageManager pm = context.getPackageManager();
-        List<ResolveInfo> resolveInfo = pm.queryIntentServices(implicitIntent, 0);
-        if (resolveInfo == null || resolveInfo.size() != 1) {
-            return null;
+    private void requestAudioPermissionIfNeeded() {
+        if (!hasAudioPermission()) {
+            ActivityCompat.requestPermissions(this, new String[]{getAudioPermission()}, REQUEST_AUDIO_PERMISSION);
         }
-        ResolveInfo serviceInfo = resolveInfo.get(0);
-        String packageName = serviceInfo.serviceInfo.packageName;
-        String className = serviceInfo.serviceInfo.name;
-        ComponentName component = new ComponentName(packageName, className);
-        Intent explicitIntent = new Intent(implicitIntent);
-        explicitIntent.setComponent(component);
-        return explicitIntent;
+    }
+
+    private boolean hasAudioPermission() {
+        return ContextCompat.checkSelfPermission(this, getAudioPermission()) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private String getAudioPermission() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            return Manifest.permission.READ_MEDIA_AUDIO;
+        }
+        return Manifest.permission.READ_EXTERNAL_STORAGE;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_AUDIO_PERMISSION) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                loadMusicList();
+            } else {
+                Toast.makeText(this, "需要音频权限才能读取本地音乐", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 }
