@@ -50,6 +50,7 @@ public class MusicService extends Service {
     private MyBinder myBinder;
     private PowerManager.WakeLock wakeLock;
     private SafeHandler handler;
+    private boolean isPrepared = false; // 是否已 prepare 完成，未完成时禁止查询时长/进度，避免 MediaPlayer error -38
 
     public static String currentTitle = "";
     public static String currentArtist = "";
@@ -186,6 +187,7 @@ public class MusicService extends Service {
             mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                 @Override
                 public void onPrepared(MediaPlayer mp) {
+                    isPrepared = true;
                     if (restorePosition > 0) {
                         mp.seekTo(restorePosition);
                     }
@@ -228,6 +230,7 @@ public class MusicService extends Service {
             mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                 @Override
                 public void onPrepared(MediaPlayer mp) {
+                    isPrepared = true;
                     mp.start();
                     acquireWakeLock();
                     isPlaying = true;
@@ -327,6 +330,7 @@ public class MusicService extends Service {
             @Override
             public boolean onError(MediaPlayer mp, int what, int extra) {
                 Log.e(TAG, "playback error what=" + what + ", extra=" + extra);
+                isPrepared = false;
                 stopPlaybackState();
                 notifyPlaybackError("播放失败，请尝试切换其他歌曲");
                 return true;
@@ -335,6 +339,7 @@ public class MusicService extends Service {
     }
 
     private void resetPlayerForNewSource() {
+        isPrepared = false;
         if (mediaPlayer != null) {
             try {
                 if (mediaPlayer.isPlaying()) {
@@ -478,6 +483,7 @@ public class MusicService extends Service {
     }
 
     private void stopPlaybackState() {
+        isPrepared = false;
         if (mediaPlayer != null) {
             try {
                 if (mediaPlayer.isPlaying()) {
@@ -562,15 +568,18 @@ public class MusicService extends Service {
     }
 
     public boolean isPlaying() {
+        if (mediaPlayer == null || !isPrepared) {
+            return false;
+        }
         try {
-            return mediaPlayer != null && mediaPlayer.isPlaying();
+            return mediaPlayer.isPlaying();
         } catch (IllegalStateException e) {
             return false;
         }
     }
 
     private int getSafeCurrentPosition() {
-        if (mediaPlayer == null) {
+        if (mediaPlayer == null || !isPrepared) {
             return 0;
         }
         try {
@@ -581,7 +590,7 @@ public class MusicService extends Service {
     }
 
     private int getSafeDuration() {
-        if (mediaPlayer == null) {
+        if (mediaPlayer == null || !isPrepared) {
             return 0;
         }
         try {
