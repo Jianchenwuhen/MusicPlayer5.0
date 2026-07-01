@@ -17,6 +17,16 @@
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+
+        <!-- 全局界面转场（push 风格），一处配置全 App 生效 -->
+        <item name="android:windowAnimationStyle">@style/WindowAnim.Push</item>
+    </style>
+
+    <style name="WindowAnim.Push" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/slide_in_right</item>
+        <item name="android:activityOpenExitAnimation">@anim/slide_out_left_slight</item>
+        <item name="android:activityCloseEnterAnimation">@anim/slide_in_left_slight</item>
+        <item name="android:activityCloseExitAnimation">@anim/slide_out_right</item>
     </style>
 
     <!-- ============================================================
