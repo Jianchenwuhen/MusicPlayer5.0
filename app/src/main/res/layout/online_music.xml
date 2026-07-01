@@ -80,10 +80,22 @@
             android:layout_marginTop="18dp"
             android:background="@drawable/panel_glass"
             android:lineSpacingExtra="6dp"
-            android:minHeight="260dp"
+            android:minHeight="72dp"
             android:padding="18dp"
-            android:text="输入关键词搜索，或点击随机推荐获取在线歌曲"
+            android:text="输入关键词搜索，或点击随机推荐获取可播放的在线歌曲"
             android:textColor="#FFFFFFFF"
-            android:textSize="18sp" />
+            android:textSize="16sp" />
+
+        <ListView
+            android:id="@+id/onlineMusicListView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="12dp"
+            android:layout_weight="1"
+            android:cacheColorHint="#00000000"
+            android:divider="#22FFFFFF"
+            android:dividerHeight="8dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp" />
     </LinearLayout>
 </FrameLayout>

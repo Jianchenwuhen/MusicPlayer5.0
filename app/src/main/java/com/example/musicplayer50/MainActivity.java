@@ -9,32 +9,26 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
-import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
-import android.os.IBinder;
 import android.os.AsyncTask;
-import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.os.IBinder;
+import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.ListView;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLEncoder;
-
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
@@ -47,20 +41,62 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private SeekBar seekBar;
     private TextView textView2;
     private TextView textView;
-    private TextView lyricText;
+    private ListView lyricListView;
+    private LyricAdapter lyricAdapter;
+    private List<LrcLine> lrcLines = new ArrayList<>();
+    private int currentLrcIndex = -1;
     private MusicService musicService;
-    private TabledatabaseHelper dbHelper;
-    private String CurrentTitle = "CurrentTitle";
-    private GestureDetector mGestureDetector;
+    private String currentTitle = "CurrentTitle";
+    private GestureDetector gestureDetector;
 
-    private ServiceConnection conn = new ServiceConnection() {
+    private final ServiceConnection conn = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             musicService = ((MusicService.MyBinder) service).getService();
+            musicService.restoreIfAvailable();
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
+            musicService = null;
+        }
+    };
+
+    private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent == null || intent.getAction() == null) {
+                return;
+            }
+
+            String action = intent.getAction();
+            if ("seekbarmaxprogress".equals(action)) {
+                seekBar.setMax(intent.getIntExtra("seekbarmaxprogress", 100));
+            } else if ("seekbarprogress".equals(action)) {
+                int progress = intent.getIntExtra("seekbarprogress", 0);
+                seekBar.setProgress(progress);
+                syncLyricHighlight(progress);
+            } else if ("pauseimage".equals(action)) {
+                play.setBackgroundResource(R.drawable.pause);
+            } else if ("playimage".equals(action)) {
+                play.setBackgroundResource(R.drawable.play);
+            } else if ("gettitle".equals(action)) {
+                currentTitle = intent.getStringExtra("title");
+                String artist = intent.getStringExtra("artist");
+                Log.e("huizhong", "CurrentTitle = " + currentTitle);
+                textView2.setText(artist);
+                textView.setText(currentTitle);
+                loadLyrics(currentTitle, artist);
+            } else if ("playbackerror".equals(action)) {
+                Toast.makeText(
+                        MainActivity.this,
+                        intent.getStringExtra("message"),
+                        Toast.LENGTH_SHORT
+                ).show();
+            } else if ("playlistempty".equals(action)) {
+                seekBar.setProgress(0);
+                Toast.makeText(MainActivity.this, "播放列表为空，请先添加歌曲", Toast.LENGTH_SHORT).show();
+            }
         }
     };
 
@@ -73,15 +109,17 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             getSupportActionBar().hide();
         }
 
-        this.getWindow().setFlags(
+        getWindow().setFlags(
                 WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN
         );
 
         textView2 = (TextView) findViewById(R.id.textView2);
         textView = (TextView) findViewById(R.id.textView);
-        lyricText = (TextView) findViewById(R.id.lyricText);
-        lyricText.setVisibility(View.GONE);
+        lyricListView = (ListView) findViewById(R.id.lyricListView);
+        lyricAdapter = new LyricAdapter(this, lrcLines);
+        lyricListView.setAdapter(lyricAdapter);
+
         play = (Button) findViewById(R.id.play);
         seekBar = (SeekBar) findViewById(R.id.seekBar);
         localmusic = (Button) findViewById(R.id.localmusic);
@@ -97,8 +135,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         onlinemusic.setOnClickListener(this);
         playlist.setOnClickListener(this);
 
-        Intent intent = new Intent(this, MusicService.class);
-        bindService(intent, conn, Context.BIND_AUTO_CREATE);
+        Intent serviceIntent = new Intent(this, MusicService.class);
+        bindService(serviceIntent, conn, Context.BIND_AUTO_CREATE);
 
         IntentFilter filter = new IntentFilter();
         filter.addAction("seekbarmaxprogress");
@@ -106,14 +144,24 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         filter.addAction("gettitle");
         filter.addAction("pauseimage");
         filter.addAction("playimage");
-        filter.addAction("nextsong");
+        filter.addAction("playbackerror");
+        filter.addAction("playlistempty");
         registerReceiver(broadcastReceiver, filter);
-
-        dbHelper = new TabledatabaseHelper(this, "login.db", null, 1);
 
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser) {
+                    Intent intent = new Intent("changed");
+                    intent.putExtra("seekbarprogress", progress);
+
+                    Intent explicitIntent = createExplicitFromImplicitIntent(MainActivity.this, intent);
+                    if (explicitIntent != null) {
+                        bindService(explicitIntent, conn, Service.BIND_AUTO_CREATE);
+                        startService(explicitIntent);
+                    }
+                    syncLyricHighlight(progress);
+                }
             }
 
             @Override
@@ -121,32 +169,20 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             }
 
             @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if (fromUser) {
-                    Intent intent = new Intent("changed");
-                    intent.putExtra("seekbarprogress", progress);
-
-                    final Intent eiintent = createExplicitFromImplicitIntent(MainActivity.this, intent);
-                    if (eiintent != null) {
-                        bindService(eiintent, conn, Service.BIND_AUTO_CREATE);
-                        startService(eiintent);
-                    }
-                }
+            public void onStopTrackingTouch(SeekBar seekBar) {
             }
         });
 
-        mGestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+        gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
                 if ((e1.getRawX() - e2.getRawX()) > 200) {
-                    Intent intent = new Intent(MainActivity.this, playlist.class);
-                    startActivity(intent);
+                    startActivity(new Intent(MainActivity.this, playlist.class));
                     return true;
                 }
 
                 if ((e2.getRawX() - e1.getRawX()) > 200) {
-                    Intent intent = new Intent(MainActivity.this, LocalMusicActivity.class);
-                    startActivity(intent);
+                    startActivity(new Intent(MainActivity.this, LocalMusicActivity.class));
                     overridePendingTransition(R.animator.lefttodleft, R.animator.righttoleft);
                     return true;
                 }
@@ -159,334 +195,185 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     @Override
     public void onClick(View v) {
         int id = v.getId();
-
         if (id == R.id.play) {
             if (musicService != null) {
                 musicService.start();
             }
-
         } else if (id == R.id.localmusic) {
-            Intent intent = new Intent(MainActivity.this, LocalMusicActivity.class);
-            startActivity(intent);
-
+            startActivity(new Intent(MainActivity.this, LocalMusicActivity.class));
         } else if (id == R.id.onlinemusic) {
-            Intent intent = new Intent(MainActivity.this, OnlineMusicActivity.class);
-            startActivity(intent);
-
+            startActivity(new Intent(MainActivity.this, OnlineMusicActivity.class));
         } else if (id == R.id.playlist) {
-            Intent intent3 = new Intent(MainActivity.this, playlist.class);
-            startActivity(intent3);
-
+            startActivity(new Intent(MainActivity.this, playlist.class));
         } else if (id == R.id.playnext) {
-            SQLiteDatabase db = dbHelper.getWritableDatabase();
-            Cursor cursor = db.query("login", null, null, null, null, null, null);
-
-            if (cursor.moveToFirst()) {
-                do {
-                    Log.e("huizhong", "CurrentTitle = " + CurrentTitle);
-
-                    if (CurrentTitle.equals(cursor.getString(cursor.getColumnIndexOrThrow("title")))) {
-                        Log.e("huizhong", "找到匹配");
-
-                        cursor.moveToNext();
-
-                        if (cursor.isAfterLast()) {
-                            Log.e("huizhong", "当前歌曲在最后一行返回第一行");
-                            cursor.moveToFirst();
-
-                            String url = cursor.getString(cursor.getColumnIndexOrThrow("url"));
-                            String title = cursor.getString(cursor.getColumnIndexOrThrow("title"));
-                            String artist = cursor.getString(cursor.getColumnIndexOrThrow("artist"));
-
-                            Intent intent2 = new Intent("startnew");
-                            intent2.putExtra("url", url);
-                            intent2.putExtra("title", title);
-                            intent2.putExtra("artist", artist);
-
-                            final Intent eiiintent = createExplicitFromImplicitIntent(MainActivity.this, intent2);
-                            if (eiiintent != null) {
-                                bindService(eiiintent, conn, Service.BIND_AUTO_CREATE);
-                                startService(eiiintent);
-                            }
-                            break;
-
-                        } else {
-                            Log.e("huizhong", "当前歌曲不是在最后一行");
-
-                            String url = cursor.getString(cursor.getColumnIndexOrThrow("url"));
-                            String title = cursor.getString(cursor.getColumnIndexOrThrow("title"));
-                            String artist = cursor.getString(cursor.getColumnIndexOrThrow("artist"));
-
-                            cursor.moveToLast();
-
-                            Intent intent2 = new Intent("startnew");
-                            intent2.putExtra("url", url);
-                            intent2.putExtra("title", title);
-                            intent2.putExtra("artist", artist);
-
-                            final Intent eiintent = createExplicitFromImplicitIntent(MainActivity.this, intent2);
-                            if (eiintent != null) {
-                                bindService(eiintent, conn, Service.BIND_AUTO_CREATE);
-                                startService(eiintent);
-                            }
-                            break;
-                        }
-                    }
-                } while (cursor.moveToNext());
+            if (musicService != null) {
+                musicService.playNextTrack();
             }
-
-            cursor.close();
-
         } else if (id == R.id.playlast) {
-            SQLiteDatabase dbb = dbHelper.getWritableDatabase();
-            Cursor cursorr = dbb.query("login", null, null, null, null, null, null);
-
-            if (cursorr.moveToFirst()) {
-                do {
-                    if (CurrentTitle.equals(cursorr.getString(cursorr.getColumnIndexOrThrow("title")))) {
-                        cursorr.moveToPrevious();
-
-                        if (cursorr.isBeforeFirst()) {
-                            cursorr.moveToLast();
-
-                            String url = cursorr.getString(cursorr.getColumnIndexOrThrow("url"));
-                            String title = cursorr.getString(cursorr.getColumnIndexOrThrow("title"));
-                            String artist = cursorr.getString(cursorr.getColumnIndexOrThrow("artist"));
-
-                            Intent intent8 = new Intent("startnew");
-                            intent8.putExtra("url", url);
-                            intent8.putExtra("title", title);
-                            intent8.putExtra("artist", artist);
-
-                            final Intent eeiintent = createExplicitFromImplicitIntent(MainActivity.this, intent8);
-                            if (eeiintent != null) {
-                                bindService(eeiintent, conn, Service.BIND_AUTO_CREATE);
-                                startService(eeiintent);
-                            }
-                            break;
-
-                        } else {
-                            String url = cursorr.getString(cursorr.getColumnIndexOrThrow("url"));
-                            String title = cursorr.getString(cursorr.getColumnIndexOrThrow("title"));
-                            String artist = cursorr.getString(cursorr.getColumnIndexOrThrow("artist"));
-
-                            cursorr.moveToNext();
-
-                            Intent intent8 = new Intent("startnew");
-                            intent8.putExtra("url", url);
-                            intent8.putExtra("title", title);
-                            intent8.putExtra("artist", artist);
-
-                            final Intent eeiintent = createExplicitFromImplicitIntent(MainActivity.this, intent8);
-                            if (eeiintent != null) {
-                                bindService(eeiintent, conn, Service.BIND_AUTO_CREATE);
-                                startService(eeiintent);
-                            }
-                            break;
-                        }
-                    }
-                } while (cursorr.moveToNext());
+            if (musicService != null) {
+                musicService.playPreviousTrack();
             }
-
-            cursorr.close();
         }
     }
-
-    private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if (intent.getAction().equals("seekbarmaxprogress")) {
-                seekBar.setMax(intent.getIntExtra("seekbarmaxprogress", 100));
-
-            } else if (intent.getAction().equals("seekbarprogress")) {
-                seekBar.setProgress(intent.getIntExtra("seekbarprogress", 0));
-
-            } else if (intent.getAction().equals("pauseimage")) {
-                play.setBackgroundResource(R.drawable.pause);
-
-            } else if (intent.getAction().equals("playimage")) {
-                play.setBackgroundResource(R.drawable.play);
-
-            } else if (intent.getAction().equals("gettitle")) {
-                CurrentTitle = intent.getStringExtra("title");
-                String artist = intent.getStringExtra("artist");
-                Log.e("huizhong", "CurrentTitle = " + CurrentTitle);
-                textView2.setText(artist);
-                textView.setText(CurrentTitle);
-                loadLyrics(CurrentTitle, artist);
-
-            } else if (intent.getAction().equals("nextsong")) {
-                Log.e("huizhong", "歌曲播放结束，接收到广播，发送下一首歌曲");
-
-                SQLiteDatabase dbb = dbHelper.getWritableDatabase();
-                Cursor cursorr = dbb.query("login", null, null, null, null, null, null);
-
-                if (cursorr.moveToFirst()) {
-                    do {
-                        Log.e("huizhong", "CurrentTitle = " + CurrentTitle);
-
-                        if (CurrentTitle.equals(cursorr.getString(cursorr.getColumnIndexOrThrow("title")))) {
-                            Log.e("huizhong", "找到匹配");
-
-                            cursorr.moveToNext();
-
-                            if (cursorr.isAfterLast()) {
-                                Log.e("huizhong", "当前歌曲在最后一行返回第一行");
-                                cursorr.moveToFirst();
-
-                                String url = cursorr.getString(cursorr.getColumnIndexOrThrow("url"));
-                                String title = cursorr.getString(cursorr.getColumnIndexOrThrow("title"));
-                                String artist = cursorr.getString(cursorr.getColumnIndexOrThrow("artist"));
-
-                                Intent intent2 = new Intent("startnew");
-                                intent2.putExtra("url", url);
-                                intent2.putExtra("title", title);
-                                intent2.putExtra("artist", artist);
-
-                                final Intent eiiintent = createExplicitFromImplicitIntent(MainActivity.this, intent2);
-                                if (eiiintent != null) {
-                                    bindService(eiiintent, conn, Service.BIND_AUTO_CREATE);
-                                    startService(eiiintent);
-                                }
-                                break;
-
-                            } else {
-                                Log.e("huizhong", "当前歌曲不是在最后一行");
-
-                                String url = cursorr.getString(cursorr.getColumnIndexOrThrow("url"));
-                                String title = cursorr.getString(cursorr.getColumnIndexOrThrow("title"));
-                                String artist = cursorr.getString(cursorr.getColumnIndexOrThrow("artist"));
-
-                                cursorr.moveToLast();
-
-                                Intent intent2 = new Intent("startnew");
-                                intent2.putExtra("url", url);
-                                intent2.putExtra("title", title);
-                                intent2.putExtra("artist", artist);
-
-                                final Intent eiintent = createExplicitFromImplicitIntent(MainActivity.this, intent2);
-                                if (eiintent != null) {
-                                    bindService(eiintent, conn, Service.BIND_AUTO_CREATE);
-                                    startService(eiintent);
-                                }
-                                break;
-                            }
-                        }
-                    } while (cursorr.moveToNext());
-                }
-
-                cursorr.close();
-            }
-        }
-    };
 
     private void loadLyrics(String title, String artist) {
         if (title == null || title.trim().length() == 0) {
-            lyricText.setVisibility(View.GONE);
+            showPlainLyrics("暂无歌词");
             return;
         }
-        lyricText.setVisibility(View.GONE);
-        new LyricsTask().execute(title, artist == null ? "" : artist);
+        showPlainLyrics("正在加载歌词...");
+        new LyricsLoadTask().execute(title, artist == null ? "" : artist);
     }
 
-    private class LyricsTask extends AsyncTask<String, Void, String> {
+    private class LyricsLoadTask extends AsyncTask<String, Void, String> {
+        private boolean isLrc;
+
         @Override
         protected String doInBackground(String... params) {
-            HttpURLConnection connection = null;
-            BufferedReader reader = null;
-            try {
-                String title = params[0];
-                String artist = params.length > 1 ? params[1] : "";
-                String urlText = "https://lrclib.net/api/search?track_name="
-                        + URLEncoder.encode(title, "UTF-8");
-                if (artist != null && artist.trim().length() > 0 && !artist.equals("<unknown>")) {
-                    urlText += "&artist_name=" + URLEncoder.encode(artist, "UTF-8");
-                }
+            String title = params[0];
+            String artist = params.length > 1 ? params[1] : "";
 
-                URL url = new URL(urlText);
-                connection = (HttpURLConnection) url.openConnection();
-                connection.setRequestMethod("GET");
-                connection.setRequestProperty("User-Agent", "MusicPlayer5.0 Android Demo");
-                connection.setConnectTimeout(8000);
-                connection.setReadTimeout(8000);
-
-                InputStream inputStream = connection.getInputStream();
-                reader = new BufferedReader(new InputStreamReader(inputStream));
-                StringBuilder builder = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    builder.append(line);
-                }
-
-                JSONArray results = new JSONArray(builder.toString());
-                if (results.length() == 0) {
-                    return "";
-                }
-
-                JSONObject item = results.getJSONObject(0);
-                String lyrics = item.optString("plainLyrics", "");
-                if (lyrics.length() == 0) {
-                    lyrics = item.optString("syncedLyrics", "");
-                }
-                return cleanLyrics(lyrics);
-            } catch (Exception e) {
-                return "";
-            } finally {
-                try {
-                    if (reader != null) {
-                        reader.close();
-                    }
-                } catch (Exception ignored) {
-                }
-                if (connection != null) {
-                    connection.disconnect();
-                }
+            String lrc = LyricsFetcher.fetchLrcRaw(artist, title);
+            if (lrc != null && !lrc.isEmpty()) {
+                isLrc = true;
+                return lrc;
             }
+
+            isLrc = false;
+            return LyricsFetcher.fetchLyrics(artist, title);
         }
 
         @Override
-        protected void onPostExecute(String lyrics) {
-            if (lyrics == null || lyrics.trim().length() == 0) {
-                lyricText.setVisibility(View.GONE);
+        protected void onPostExecute(String result) {
+            if (result == null || result.trim().isEmpty()) {
+                showPlainLyrics("暂无歌词");
+                sendBroadcast(new Intent("lyricsLoaded"));
+                return;
+            }
+
+            if (isLrc) {
+                lrcLines = parseLrc(result);
+                currentLrcIndex = -1;
+                lyricAdapter.clear();
+                lyricAdapter.addAll(lrcLines);
+                lyricAdapter.notifyDataSetChanged();
+                if (lrcLines.isEmpty()) {
+                    showPlainLyrics("暂无歌词");
+                }
             } else {
-                lyricText.setText(lyrics);
-                lyricText.setVisibility(View.VISIBLE);
+                showPlainLyrics(result);
             }
+            sendBroadcast(new Intent("lyricsLoaded"));
         }
     }
 
-    private String cleanLyrics(String lyrics) {
-        if (lyrics == null) {
-            return "";
-        }
-        String[] lines = lyrics.split("\n");
-        StringBuilder builder = new StringBuilder();
-        int count = 0;
-        for (String line : lines) {
-            String text = line.replaceAll("\\[\\d{2}:\\d{2}\\.\\d{2,3}\\]", "").trim();
-            if (text.length() > 0) {
-                builder.append(text).append("\n");
-                count++;
+    private void showPlainLyrics(String text) {
+        lrcLines.clear();
+        currentLrcIndex = -1;
+        if (text != null && !text.trim().isEmpty()) {
+            String[] lines = text.split("\n");
+            for (String line : lines) {
+                if (line.trim().length() > 0) {
+                    lrcLines.add(new LrcLine(0, line.trim()));
+                }
             }
-            if (count >= 6) {
-                break;
-            }
+            lyricAdapter.clear();
+            lyricAdapter.addAll(lrcLines);
+        } else {
+            lyricAdapter.clear();
         }
-        return builder.toString().trim();
+        lyricAdapter.clearHighlight();
+        lyricAdapter.notifyDataSetChanged();
     }
 
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
+    private List<LrcLine> parseLrc(String rawLrc) {
+        List<LrcLine> lines = new ArrayList<>();
+        if (rawLrc == null || rawLrc.isEmpty()) {
+            return lines;
+        }
 
-        unbindService(conn);
-        unregisterReceiver(broadcastReceiver);
+        String[] rawLines = rawLrc.split("\n");
+        Pattern pattern = Pattern.compile("\\[(\\d{2}):(\\d{2})[.:](\\d{2,3})\\]");
+
+        for (String line : rawLines) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+
+            Matcher matcher = pattern.matcher(trimmed);
+            List<Long> times = new ArrayList<>();
+
+            while (matcher.find()) {
+                int min = Integer.parseInt(matcher.group(1));
+                int sec = Integer.parseInt(matcher.group(2));
+                String msStr = matcher.group(3);
+                int ms = Integer.parseInt(msStr);
+                if (msStr.length() == 2) {
+                    ms *= 10;
+                }
+                times.add((min * 60L + sec) * 1000 + ms);
+            }
+
+            String text = trimmed.replaceAll("\\[\\d{2}:\\d{2}[.:]\\d{2,3}\\]", "").trim();
+            if (text.isEmpty()) {
+                continue;
+            }
+
+            for (Long time : times) {
+                lines.add(new LrcLine(time, text));
+            }
+        }
+
+        Collections.sort(lines, (a, b) -> Long.compare(a.getTime(), b.getTime()));
+        return lines;
+    }
+
+    private void syncLyricHighlight(int positionMs) {
+        if (lrcLines.isEmpty()) {
+            return;
+        }
+
+        int lo = 0;
+        int hi = lrcLines.size() - 1;
+        int best = -1;
+        while (lo <= hi) {
+            int mid = (lo + hi) / 2;
+            if (lrcLines.get(mid).getTime() <= positionMs) {
+                best = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+
+        if (best != currentLrcIndex) {
+            currentLrcIndex = best;
+            lyricAdapter.setCurrentLine(currentLrcIndex);
+            scrollToCurrentLine(currentLrcIndex);
+        }
+    }
+
+    private void scrollToCurrentLine(final int index) {
+        if (index < 0 || lyricListView == null) {
+            return;
+        }
+        lyricListView.post(new Runnable() {
+            @Override
+            public void run() {
+                int listHeight = lyricListView.getHeight();
+                if (listHeight <= 0) {
+                    return;
+                }
+                int offset = listHeight / 2 - lyricListView.getPaddingTop();
+                lyricListView.setSelectionFromTop(index, offset);
+            }
+        });
     }
 
     public static Intent createExplicitFromImplicitIntent(Context context, Intent implicitIntent) {
         PackageManager pm = context.getPackageManager();
         List<ResolveInfo> resolveInfo = pm.queryIntentServices(implicitIntent, 0);
-
         if (resolveInfo == null || resolveInfo.size() != 1) {
             return null;
         }
@@ -498,13 +385,19 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         Intent explicitIntent = new Intent(implicitIntent);
         explicitIntent.setComponent(component);
-
         return explicitIntent;
     }
 
     @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        unbindService(conn);
+        unregisterReceiver(broadcastReceiver);
+    }
+
+    @Override
     public boolean onTouchEvent(MotionEvent event) {
-        mGestureDetector.onTouchEvent(event);
+        gestureDetector.onTouchEvent(event);
         return super.onTouchEvent(event);
     }
 }

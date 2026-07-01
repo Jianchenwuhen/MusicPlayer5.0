@@ -3,12 +3,17 @@ package com.example.musicplayer50;
 import android.content.ContentProvider;
 import android.content.ContentUris;
 import android.content.ContentValues;
+import android.content.Intent;
 import android.content.UriMatcher;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.net.Uri;
+import android.util.Log;
 
 public class PlaylistProvider extends ContentProvider {
+    // 自定义广播 action：通知播放列表发生变化
+    public static final String ACTION_PLAYLIST_CHANGED = "com.example.musicplayer50.PLAYLIST_CHANGED";
+
     private static final int PLAYLIST = 1;
     private static final int PLAYLIST_ID = 2;
 
@@ -60,6 +65,8 @@ public class PlaylistProvider extends ContentProvider {
         long id = db.insert(PlaylistContract.TABLE_NAME, null, values);
         Uri resultUri = ContentUris.withAppendedId(PlaylistContract.CONTENT_URI, id);
         notifyChange(uri);
+        // 发广播通知其他组件播放列表已变化
+        sendPlaylistChangedBroadcast("insert");
         return resultUri;
     }
 
@@ -81,6 +88,7 @@ public class PlaylistProvider extends ContentProvider {
         }
 
         notifyChange(uri);
+        sendPlaylistChangedBroadcast("delete");
         return count;
     }
 
@@ -102,6 +110,7 @@ public class PlaylistProvider extends ContentProvider {
         }
 
         notifyChange(uri);
+        sendPlaylistChangedBroadcast("update");
         return count;
     }
 
@@ -120,6 +129,18 @@ public class PlaylistProvider extends ContentProvider {
     private void notifyChange(Uri uri) {
         if (getContext() != null) {
             getContext().getContentResolver().notifyChange(uri, null);
+        }
+    }
+
+    /**
+     * 数据变更后发送广播，通知播放列表相关界面刷新
+     */
+    private void sendPlaylistChangedBroadcast(String operation) {
+        if (getContext() != null) {
+            Intent intent = new Intent(ACTION_PLAYLIST_CHANGED);
+            intent.putExtra("operation", operation);
+            getContext().sendBroadcast(intent);
+            Log.e("huizhong", "PlaylistProvider 发送广播: " + operation);
         }
     }
 }
