@@ -20,6 +20,8 @@
     <color name="surface_glass">#990A1018</color>
     <color name="surface_glass_soft">#660A1018</color>
     <color name="surface_glass_strong">#CC0A1018</color>
+    <color name="surface_ghost">#22FFFFFF</color>
+    <color name="surface_ghost_pressed">#44FFFFFF</color>
 
     <!-- 描边 / 分隔 -->
     <color name="stroke_hairline">#33FFFFFF</color>
