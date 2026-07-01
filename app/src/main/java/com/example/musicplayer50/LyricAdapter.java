@@ -2,6 +2,7 @@ package com.example.musicplayer50;
 
 import android.content.Context;
 import android.graphics.Typeface;
+import android.support.v4.content.ContextCompat;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -42,11 +43,11 @@ public class LyricAdapter extends ArrayAdapter<LrcLine> {
         textView.setText(line == null ? "" : line.getText());
 
         if (position == currentLine) {
-            textView.setTextColor(0xFFFFFFFF);
+            textView.setTextColor(ContextCompat.getColor(getContext(), R.color.accent_primary));
             textView.setTypeface(Typeface.DEFAULT_BOLD);
             textView.setTextSize(18);
         } else {
-            textView.setTextColor(0xCCFFFFFF);
+            textView.setTextColor(ContextCompat.getColor(getContext(), R.color.text_tertiary));
             textView.setTypeface(Typeface.DEFAULT);
             textView.setTextSize(15);
         }

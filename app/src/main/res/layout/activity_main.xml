@@ -9,15 +9,16 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#77000000" />
+        android:background="@color/scrim" />
 
     <LinearLayout
         android:id="@+id/contentRoot"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="22dp">
+        android:padding="@dimen/screen_padding">
 
+        <!-- 顶部：标题 + 导航 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -28,37 +29,39 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:ellipsize="end"
+                android:singleLine="true"
                 android:text="Music Player"
-                android:textColor="#FFFFFFFF"
-                android:textSize="28sp"
-                android:textStyle="bold" />
+                style="@style/Text.Headline" />
 
             <Button
                 android:id="@+id/localmusic"
-                android:layout_width="92dp"
-                android:layout_height="42dp"
-                android:background="@drawable/button_secondary"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/button_height"
+                android:minWidth="0dp"
+                android:paddingLeft="@dimen/space_lg"
+                android:paddingRight="@dimen/space_lg"
                 android:text="本地"
-                android:textColor="#FFFFFFFF"
-                android:textSize="14sp" />
+                style="@style/Widget.Button.Secondary" />
 
             <Button
                 android:id="@+id/onlinemusic"
-                android:layout_width="92dp"
-                android:layout_height="42dp"
-                android:layout_marginLeft="10dp"
-                android:background="@drawable/button_primary"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/button_height"
+                android:layout_marginLeft="@dimen/space_sm"
+                android:minWidth="0dp"
+                android:paddingLeft="@dimen/space_lg"
+                android:paddingRight="@dimen/space_lg"
                 android:text="在线"
-                android:textColor="#FFFFFFFF"
-                android:textSize="14sp" />
+                style="@style/Widget.Button.Primary" />
         </LinearLayout>
 
+        <!-- 波形可视化面板 -->
         <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="156dp"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/panel_glass"
-            android:padding="10dp">
+            android:layout_height="150dp"
+            android:layout_marginTop="@dimen/space_lg"
+            style="@style/Panel.Glass">
 
             <com.example.musicplayer50.AudioWaveView
                 android:id="@+id/audioWaveView"
@@ -66,97 +69,134 @@
                 android:layout_height="match_parent" />
         </FrameLayout>
 
+        <!-- 歌词 -->
         <ListView
             android:id="@+id/lyricListView"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/space_md"
             android:layout_weight="1"
             android:background="@drawable/panel_glass"
             android:cacheColorHint="#00000000"
             android:divider="@null"
             android:dividerHeight="0dp"
-            android:paddingTop="14dp"
-            android:paddingBottom="14dp"
+            android:paddingTop="@dimen/space_lg"
+            android:paddingBottom="@dimen/space_lg"
             android:stackFromBottom="false"
-            android:transcriptMode="disabled"
-            android:visibility="visible" />
+            android:transcriptMode="disabled" />
 
+        <!-- 正在播放面板 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/panel_glass"
+            android:layout_marginTop="@dimen/space_md"
             android:orientation="vertical"
-            android:padding="20dp">
+            style="@style/Panel.Glass">
 
             <TextView
                 android:id="@+id/textView"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:ellipsize="end"
                 android:hint="Title"
-                android:maxLines="1"
-                android:textColor="#FFFFFFFF"
-                android:textColorHint="#CCFFFFFF"
-                android:textSize="22sp"
-                android:textStyle="bold" />
+                style="@style/Text.Title" />
 
             <TextView
                 android:id="@+id/textView2"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
+                android:layout_marginTop="@dimen/space_xs"
                 android:ellipsize="end"
                 android:hint="Artist"
                 android:maxLines="1"
-                android:textColor="#DDEAF6FF"
-                android:textColorHint="#99FFFFFF"
-                android:textSize="15sp" />
+                style="@style/Text.Body" />
 
-            <SeekBar
-                android:id="@+id/seekBar"
-                android:layout_width="match_parent"
-                android:layout_height="42dp"
-                android:layout_marginTop="12dp"
-                android:indeterminate="false"
-                android:progressDrawable="@drawable/seekbarbg"
-                android:thumb="@drawable/currentprogress3" />
-
+            <!-- 进度 + 时间 -->
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="72dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_md"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/currentTime"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="44dp"
+                    android:text="00:00"
+                    style="@style/Text.Caption" />
+
+                <SeekBar
+                    android:id="@+id/seekBar"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:layout_marginLeft="@dimen/space_sm"
+                    android:layout_marginRight="@dimen/space_sm"
+                    android:indeterminate="false"
+                    android:maxHeight="4dp"
+                    android:minHeight="4dp"
+                    android:progressDrawable="@drawable/seekbarbg"
+                    android:thumb="@drawable/seek_thumb" />
+
+                <TextView
+                    android:id="@+id/totalTime"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:minWidth="44dp"
+                    android:text="00:00"
+                    style="@style/Text.Caption" />
+            </LinearLayout>
+
+            <!-- 控制按钮 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_sm"
                 android:gravity="center"
                 android:orientation="horizontal">
 
                 <Button
                     android:id="@+id/playlast"
-                    android:layout_width="54dp"
-                    android:layout_height="54dp"
-                    android:background="@drawable/playpreviousbg" />
+                    android:layout_width="@dimen/control_secondary"
+                    android:layout_height="@dimen/control_secondary"
+                    android:background="@drawable/control_prev"
+                    android:foreground="@drawable/ripple_circle"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:padding="0dp" />
 
                 <Button
                     android:id="@+id/play"
-                    android:layout_width="66dp"
-                    android:layout_height="66dp"
+                    android:layout_width="@dimen/control_primary"
+                    android:layout_height="@dimen/control_primary"
                     android:layout_marginLeft="34dp"
                     android:layout_marginRight="34dp"
-                    android:background="@drawable/control_play" />
+                    android:background="@drawable/control_play"
+                    android:foreground="@drawable/ripple_circle"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:padding="0dp" />
 
                 <Button
                     android:id="@+id/playnext"
-                    android:layout_width="54dp"
-                    android:layout_height="54dp"
-                    android:background="@drawable/playnextbg" />
+                    android:layout_width="@dimen/control_secondary"
+                    android:layout_height="@dimen/control_secondary"
+                    android:background="@drawable/control_next"
+                    android:foreground="@drawable/ripple_circle"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:padding="0dp" />
             </LinearLayout>
 
             <Button
                 android:id="@+id/playlist"
                 android:layout_width="match_parent"
-                android:layout_height="42dp"
-                android:background="@drawable/button_secondary"
+                android:layout_height="@dimen/button_height"
+                android:layout_marginTop="@dimen/space_md"
                 android:text="播放列表"
-                android:textColor="#FFFFFFFF"
-                android:textSize="14sp" />
+                style="@style/Widget.Button.Secondary" />
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>

@@ -38,6 +38,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private SeekBar seekBar;
     private TextView textView2;
     private TextView textView;
+    private TextView currentTime;
+    private TextView totalTime;
     private ListView lyricListView;
     private LyricAdapter lyricAdapter;
     private AudioWaveView audioWaveView;
@@ -70,6 +72,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         textView2 = (TextView) findViewById(R.id.textView2);
         textView = (TextView) findViewById(R.id.textView);
+        currentTime = (TextView) findViewById(R.id.currentTime);
+        totalTime = (TextView) findViewById(R.id.totalTime);
         lyricListView = (ListView) findViewById(R.id.lyricListView);
         audioWaveView = (AudioWaveView) findViewById(R.id.audioWaveView);
         lyricAdapter = new LyricAdapter(this, lrcLines);
@@ -125,6 +129,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     // 拖拽进度条时歌词同步跳转
                     syncLyricHighlight(progress);
                 }
+                currentTime.setText(formatTime(progress));
             }
         });
 
@@ -183,11 +188,14 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
             if ("seekbarmaxprogress".equals(action)) {
-                seekBar.setMax(intent.getIntExtra("seekbarmaxprogress", 100));
+                int max = intent.getIntExtra("seekbarmaxprogress", 100);
+                seekBar.setMax(max);
+                totalTime.setText(formatTime(max));
 
             } else if ("seekbarprogress".equals(action)) {
                 int progress = intent.getIntExtra("seekbarprogress", 0);
                 seekBar.setProgress(progress);
+                currentTime.setText(formatTime(progress));
                 syncLyricHighlight(progress);
 
             } else if ("pauseimage".equals(action)) {
@@ -285,12 +293,26 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         int duration = musicService.getDuration();
         if (duration > 0) {
+            int position = musicService.getCurrentPosition();
             seekBar.setMax(duration);
-            seekBar.setProgress(musicService.getCurrentPosition());
+            seekBar.setProgress(position);
+            totalTime.setText(formatTime(duration));
+            currentTime.setText(formatTime(position));
         }
         boolean playing = musicService.isPlaying();
         play.setBackgroundResource(playing ? R.drawable.control_pause : R.drawable.control_play);
         setWavePlaying(playing);
+    }
+
+    /** 毫秒 → mm:ss */
+    private String formatTime(int ms) {
+        if (ms < 0) {
+            ms = 0;
+        }
+        int totalSec = ms / 1000;
+        int min = totalSec / 60;
+        int sec = totalSec % 60;
+        return String.format(java.util.Locale.US, "%02d:%02d", min, sec);
     }
 
     private void setWavePlaying(boolean playing) {
