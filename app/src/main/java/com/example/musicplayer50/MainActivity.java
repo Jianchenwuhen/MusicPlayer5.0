@@ -57,6 +57,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             musicService = ((MusicService.MyBinder) service).getService();
+            // 恢复上次播放的歌曲与进度（停在暂停，不自动出声）
+            musicService.restoreIfAvailable();
             syncServiceState();
         }
 
@@ -233,13 +235,16 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     };
 
     private void playNextSong() {
-        Music next = PlaybackQueue.next(loadPlaylistSongs(), CurrentTitle);
-        startSong(next);
+        // 统一走 Service 的上一首/下一首逻辑（与通知栏按钮、自动切歌一致，按 url 匹配）
+        if (musicService != null) {
+            musicService.playNextTrack();
+        }
     }
 
     private void playPreviousSong() {
-        Music previous = PlaybackQueue.previous(loadPlaylistSongs(), CurrentTitle);
-        startSong(previous);
+        if (musicService != null) {
+            musicService.playPreviousTrack();
+        }
     }
 
     private List<Music> loadPlaylistSongs() {

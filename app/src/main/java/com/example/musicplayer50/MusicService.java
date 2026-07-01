@@ -174,13 +174,15 @@ public class MusicService extends Service {
     }
 
     public void restoreIfAvailable() {
+        if (isPrepared) {
+            return; // 已有歌曲加载/播放中，不覆盖当前会话
+        }
         restorePlaybackState();
         if (currentUrl == null || currentUrl.trim().length() == 0) {
             return;
         }
 
         final int restorePosition = getPersistedPosition();
-        final boolean shouldResumePlayback = isPlaying;
 
         try {
             resetPlayerForNewSource();
@@ -191,17 +193,9 @@ public class MusicService extends Service {
                     if (restorePosition > 0) {
                         mp.seekTo(restorePosition);
                     }
-
-                    if (shouldResumePlayback) {
-                        mp.start();
-                        acquireWakeLock();
-                        isPlaying = true;
-                        sendAppBroadcast(new Intent("playimage"));
-                        handler.sendEmptyMessage(UPDATE_PROGRESS);
-                    } else {
-                        isPlaying = false;
-                        sendAppBroadcast(new Intent("pauseimage"));
-                    }
+                    // 只恢复上次歌曲与进度，停在暂停，不自动出声（用户可手动点播放继续）
+                    isPlaying = false;
+                    sendAppBroadcast(new Intent("pauseimage"));
 
                     handler.sendEmptyMessage(SET_SEEKBAR_MAX);
                     broadcastTrackMetadata();
