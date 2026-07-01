@@ -1,11 +1,13 @@
 package com.example.musicplayer50;
 
+import android.Manifest;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.os.IBinder;
 import android.os.AsyncTask;
@@ -70,6 +72,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         UiUtils.setupEdgeToEdge(this);
         UiUtils.applySystemBarInsets(findViewById(R.id.contentRoot));
+
+        // Android 13+ 需运行时授予通知权限，播放通知栏才会显示
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1001);
+        }
 
         textView2 = (TextView) findViewById(R.id.textView2);
         textView = (TextView) findViewById(R.id.textView);

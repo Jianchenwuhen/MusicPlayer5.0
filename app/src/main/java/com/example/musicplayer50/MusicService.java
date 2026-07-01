@@ -13,6 +13,7 @@ import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
+import android.net.Uri;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
@@ -117,9 +118,16 @@ public class MusicService extends Service {
         handler = new SafeHandler(this);
         initMediaPlayer();
         createNotificationChannel();
-        registerReceiver(notifyReceiver, new IntentFilter(ACTION_NOTIFY_PLAY));
-        registerReceiver(notifyReceiver, new IntentFilter(ACTION_NOTIFY_NEXT));
-        registerReceiver(notifyReceiver, new IntentFilter(ACTION_NOTIFY_PREV));
+        // Android 13+ 注册动态广播必须显式声明导出与否；应用内部广播 → NOT_EXPORTED
+        IntentFilter notifyFilter = new IntentFilter();
+        notifyFilter.addAction(ACTION_NOTIFY_PLAY);
+        notifyFilter.addAction(ACTION_NOTIFY_NEXT);
+        notifyFilter.addAction(ACTION_NOTIFY_PREV);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(notifyReceiver, notifyFilter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(notifyReceiver, notifyFilter);
+        }
         restorePlaybackState();
     }
 
@@ -175,8 +183,6 @@ public class MusicService extends Service {
 
         try {
             resetPlayerForNewSource();
-            mediaPlayer.setDataSource(currentUrl);
-            mediaPlayer.prepareAsync();
             mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                 @Override
                 public void onPrepared(MediaPlayer mp) {
@@ -202,6 +208,13 @@ public class MusicService extends Service {
                     updateNotification();
                 }
             });
+            // 关键修复：content:// 本地 URI 用带 Context 的重载
+            if (currentUrl.startsWith("content://")) {
+                mediaPlayer.setDataSource(getApplicationContext(), Uri.parse(currentUrl));
+            } else {
+                mediaPlayer.setDataSource(currentUrl);
+            }
+            mediaPlayer.prepareAsync();
         } catch (Exception e) {
             Log.e(TAG, "restore playback failed", e);
             notifyPlaybackError("无法恢复上次播放的歌曲");
@@ -211,8 +224,7 @@ public class MusicService extends Service {
     public void startnew(String path) {
         try {
             resetPlayerForNewSource();
-            mediaPlayer.setDataSource(path);
-            mediaPlayer.prepareAsync();
+            // 先设监听再 prepareAsync，避免时序竞态
             mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                 @Override
                 public void onPrepared(MediaPlayer mp) {
@@ -226,6 +238,13 @@ public class MusicService extends Service {
                     updateNotification();
                 }
             });
+            // 关键修复：本地 content:// URI 必须用带 Context 的重载，否则 MediaPlayer 报 error -38
+            if (path != null && path.startsWith("content://")) {
+                mediaPlayer.setDataSource(getApplicationContext(), Uri.parse(path));
+            } else {
+                mediaPlayer.setDataSource(path);
+            }
+            mediaPlayer.prepareAsync();
         } catch (Exception e) {
             Log.e(TAG, "start new track failed", e);
             notifyPlaybackError("当前歌曲无法播放");
@@ -523,6 +542,31 @@ public class MusicService extends Service {
 
     private int getPersistedPosition() {
         return getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getInt(KEY_POSITION, 0);
+    }
+
+    // ==================== 供前端(MainActivity)读取状态：兼容原 UI 接口 ====================
+    public String getCurrentTitle() {
+        return currentTitle;
+    }
+
+    public String getCurrentArtist() {
+        return currentArtist;
+    }
+
+    public int getDuration() {
+        return getSafeDuration();
+    }
+
+    public int getCurrentPosition() {
+        return getSafeCurrentPosition();
+    }
+
+    public boolean isPlaying() {
+        try {
+            return mediaPlayer != null && mediaPlayer.isPlaying();
+        } catch (IllegalStateException e) {
+            return false;
+        }
     }
 
     private int getSafeCurrentPosition() {

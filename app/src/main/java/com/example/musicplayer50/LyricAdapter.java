@@ -17,7 +17,7 @@ public class LyricAdapter extends ArrayAdapter<LrcLine> {
 
     private int currentLine = -1;
     private int normalColor = Color.parseColor("#88FFFFFF");   // 半透明白
-    private int highlightColor = Color.parseColor("#FF6EE8FF"); // 亮青色
+    private int highlightColor = Color.parseColor("#FF38BDF8"); // 主题强调青色（与整体 UI 统一）
     private float normalSize = 15f;
     private float highlightSize = 18f;
 

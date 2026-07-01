@@ -1,6 +1,8 @@
 package com.example.musicplayer50;
 
+import android.content.ContentValues;
 import android.content.Intent;
+import android.database.Cursor;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
@@ -123,6 +125,8 @@ public class OnlineMusicActivity extends AppCompatActivity {
             return;
         }
         Music music = results.get(position);
+        // 先加入播放列表，保证 MusicService 的上一首/下一首能把在线歌曲纳入队列
+        addToPlaylistIfAbsent(music);
         Intent intent = new Intent(this, MusicService.class);
         intent.setAction("startnew");
         intent.putExtra("url", music.getUrl());
@@ -130,6 +134,30 @@ public class OnlineMusicActivity extends AppCompatActivity {
         intent.putExtra("artist", music.getArtist());
         startService(intent);
         Toast.makeText(this, "正在播放预览：" + music.getTitle(), Toast.LENGTH_SHORT).show();
+    }
+
+    /** 若该在线歌曲尚不在播放列表中，则插入，供上一首/下一首连贯切换 */
+    private void addToPlaylistIfAbsent(Music music) {
+        Cursor cursor = getContentResolver().query(
+                PlaylistContract.CONTENT_URI,
+                null,
+                PlaylistContract.COLUMN_TITLE + " = ? AND " + PlaylistContract.COLUMN_URL + " = ?",
+                new String[]{music.getTitle(), music.getUrl()},
+                null);
+        try {
+            boolean exists = cursor != null && cursor.moveToFirst();
+            if (!exists) {
+                ContentValues values = new ContentValues();
+                values.put(PlaylistContract.COLUMN_TITLE, music.getTitle());
+                values.put(PlaylistContract.COLUMN_ARTIST, music.getArtist());
+                values.put(PlaylistContract.COLUMN_URL, music.getUrl());
+                getContentResolver().insert(PlaylistContract.CONTENT_URI, values);
+            }
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
     }
 
     // ==================== 三态切换 ====================
