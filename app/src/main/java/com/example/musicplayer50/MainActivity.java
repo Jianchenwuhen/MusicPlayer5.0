@@ -45,6 +45,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private AudioWaveView audioWaveView;
     private List<LrcLine> lrcLines = new ArrayList<>();
     private int currentLrcIndex = -1;
+    private boolean hasSyncedLyrics = false;
     private MusicService musicService;
     private String CurrentTitle = "CurrentTitle";
     private GestureDetector mGestureDetector;
@@ -391,6 +392,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 lyricAdapter.clear();
                 lyricAdapter.addAll(lrcLines);
                 lyricAdapter.notifyDataSetChanged();
+                hasSyncedLyrics = !lrcLines.isEmpty();
                 if (lrcLines.isEmpty()) {
                     showPlainLyrics("暂无歌词");
                 }
@@ -407,6 +409,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private void showPlainLyrics(String text) {
         List<LrcLine> plainLines = new ArrayList<>();
         currentLrcIndex = -1;
+        hasSyncedLyrics = false;
         if (text != null && !text.trim().isEmpty()) {
             String[] lines = text.split("\n");
             for (String line : lines) {
@@ -464,7 +467,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
      * 根据当前播放位置（毫秒），二分查找应高亮的歌词行，并自动滚动
      */
     private void syncLyricHighlight(int positionMs) {
-        if (lrcLines.isEmpty()) return;
+        // 纯文本/占位歌词（无时间戳）不做高亮，避免"暂无歌词"被误高亮
+        if (!hasSyncedLyrics || lrcLines.isEmpty()) return;
 
         // 二分查找：找到时间戳 ≤ positionMs 的最大行
         int lo = 0, hi = lrcLines.size() - 1, best = -1;

@@ -51,15 +51,49 @@ public final class LyricsFetcher {
     }
 
     private static long searchSongId(String artist, String title) throws Exception {
-        StringBuilder query = new StringBuilder();
-        if (artist != null && !artist.trim().isEmpty()) {
-            query.append(artist.trim()).append(' ');
-        }
-        if (title != null) {
-            query.append(title.trim());
+        String cleanTitle = title == null ? "" : title.trim();
+        if (cleanTitle.isEmpty()) {
+            return -1;
         }
 
-        String encodedQuery = URLEncoder.encode(query.toString().trim(), "UTF-8");
+        // 关键修复：本地文件常把歌手标为"未知歌手/<unknown>"，直接拼进搜索词会让网易云
+        // 返回 0 条结果 → 拿不到歌词。这里先过滤占位歌手，且"歌手+歌名"搜不到时退回只用歌名。
+        String cleanArtist = normalizeArtist(artist);
+        if (!cleanArtist.isEmpty()) {
+            long id = querySongId(cleanArtist + " " + cleanTitle);
+            if (id > 0) {
+                return id;
+            }
+        }
+        return querySongId(cleanTitle);
+    }
+
+    /**
+     * 归一化歌手名：空 / 占位（未知歌手、unknown 等）一律视为"无歌手"，避免污染搜索词。
+     * 包级可见，便于单元测试。
+     */
+    static String normalizeArtist(String artist) {
+        if (artist == null) {
+            return "";
+        }
+        String trimmed = artist.trim();
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+        String lower = trimmed.toLowerCase();
+        if (lower.equals("unknown")
+                || lower.equals("<unknown>")
+                || lower.equals("unknown artist")
+                || trimmed.equals("未知歌手")
+                || trimmed.equals("未知艺术家")
+                || trimmed.equals("未知")) {
+            return "";
+        }
+        return trimmed;
+    }
+
+    private static long querySongId(String query) throws Exception {
+        String encodedQuery = URLEncoder.encode(query.trim(), "UTF-8");
         if (encodedQuery.isEmpty()) {
             return -1;
         }
