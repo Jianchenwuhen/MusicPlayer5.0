@@ -81,13 +81,13 @@ public class MusicService extends Service {
                 case UPDATE_PROGRESS:
                     Intent progressIntent = new Intent("seekbarprogress");
                     progressIntent.putExtra("seekbarprogress", service.getSafeCurrentPosition());
-                    service.sendBroadcast(progressIntent);
+                    service.sendAppBroadcast(progressIntent);
                     sendEmptyMessageDelayed(UPDATE_PROGRESS, 500);
                     break;
                 case SET_SEEKBAR_MAX:
                     Intent maxIntent = new Intent("seekbarmaxprogress");
                     maxIntent.putExtra("seekbarmaxprogress", service.getSafeDuration());
-                    service.sendBroadcast(maxIntent);
+                    service.sendAppBroadcast(maxIntent);
                     break;
                 default:
                     break;
@@ -149,12 +149,12 @@ public class MusicService extends Service {
                 mediaPlayer.pause();
                 releaseWakeLock();
                 isPlaying = false;
-                sendBroadcast(new Intent("pauseimage"));
+                sendAppBroadcast(new Intent("pauseimage"));
             } else {
                 mediaPlayer.start();
                 acquireWakeLock();
                 isPlaying = true;
-                sendBroadcast(new Intent("playimage"));
+                sendAppBroadcast(new Intent("playimage"));
                 handler.sendEmptyMessage(UPDATE_PROGRESS);
             }
             savePlaybackState();
@@ -196,11 +196,11 @@ public class MusicService extends Service {
                         mp.start();
                         acquireWakeLock();
                         isPlaying = true;
-                        sendBroadcast(new Intent("playimage"));
+                        sendAppBroadcast(new Intent("playimage"));
                         handler.sendEmptyMessage(UPDATE_PROGRESS);
                     } else {
                         isPlaying = false;
-                        sendBroadcast(new Intent("pauseimage"));
+                        sendAppBroadcast(new Intent("pauseimage"));
                     }
 
                     handler.sendEmptyMessage(SET_SEEKBAR_MAX);
@@ -234,7 +234,7 @@ public class MusicService extends Service {
                     mp.start();
                     acquireWakeLock();
                     isPlaying = true;
-                    sendBroadcast(new Intent("playimage"));
+                    sendAppBroadcast(new Intent("playimage"));
                     handler.sendEmptyMessage(SET_SEEKBAR_MAX);
                     handler.sendEmptyMessage(UPDATE_PROGRESS);
                     savePlaybackState();
@@ -497,10 +497,19 @@ public class MusicService extends Service {
         releaseWakeLock();
         handler.removeMessages(UPDATE_PROGRESS);
         isPlaying = false;
-        sendBroadcast(new Intent("pauseimage"));
+        sendAppBroadcast(new Intent("pauseimage"));
         broadcastProgress(0);
         savePlaybackState();
         updateNotification();
+    }
+
+    /**
+     * 发应用内广播：设 package，保证能送达本应用 RECEIVER_NOT_EXPORTED 的动态接收器
+     * （Android 14 下隐式广播默认不投递给 NOT_EXPORTED 接收器，UI 进度/图标就不刷新）
+     */
+    private void sendAppBroadcast(Intent intent) {
+        intent.setPackage(getPackageName());
+        super.sendBroadcast(intent);
     }
 
     private void broadcastTrackMetadata() {
@@ -508,23 +517,23 @@ public class MusicService extends Service {
         titleIntent.putExtra("title", currentTitle);
         titleIntent.putExtra("url", currentUrl);
         titleIntent.putExtra("artist", currentArtist);
-        sendBroadcast(titleIntent);
+        sendAppBroadcast(titleIntent);
     }
 
     private void broadcastProgress(int progress) {
         Intent progressIntent = new Intent("seekbarprogress");
         progressIntent.putExtra("seekbarprogress", progress);
-        sendBroadcast(progressIntent);
+        sendAppBroadcast(progressIntent);
     }
 
     private void notifyPlaybackError(String message) {
         Intent errorIntent = new Intent(ACTION_PLAYBACK_ERROR);
         errorIntent.putExtra("message", safeString(message));
-        sendBroadcast(errorIntent);
+        sendAppBroadcast(errorIntent);
     }
 
     private void notifyPlaylistEmpty() {
-        sendBroadcast(new Intent(ACTION_PLAYLIST_EMPTY));
+        sendAppBroadcast(new Intent(ACTION_PLAYLIST_EMPTY));
     }
 
     private void savePlaybackState() {
