@@ -133,6 +133,7 @@ public class OnlineMusicActivity extends AppCompatActivity {
         intent.putExtra("title", music.getTitle());
         intent.putExtra("artist", music.getArtist());
         startService(intent);
+        openPlayerDetail();
         Toast.makeText(this, "正在播放预览：" + music.getTitle(), Toast.LENGTH_SHORT).show();
     }
 
@@ -158,6 +159,12 @@ public class OnlineMusicActivity extends AppCompatActivity {
                 cursor.close();
             }
         }
+    }
+
+    private void openPlayerDetail() {
+        Intent playerIntent = new Intent(this, MainActivity.class);
+        playerIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(playerIntent);
     }
 
     // ==================== 三态切换 ====================

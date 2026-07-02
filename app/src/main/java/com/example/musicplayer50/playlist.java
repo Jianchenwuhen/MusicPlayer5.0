@@ -116,6 +116,7 @@ public class playlist extends AppCompatActivity {
                 intent.putExtra("artist", artist);
 
                 startService(intent);
+                openPlayerDetail();
             }
         });
     }
@@ -140,6 +141,13 @@ public class playlist extends AppCompatActivity {
         }
         return true;
     }
+
+    private void openPlayerDetail() {
+        Intent playerIntent = new Intent(this, MainActivity.class);
+        playerIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(playerIntent);
+    }
+
     @Override
     protected void onDestroy() {
         unbindService(conn);

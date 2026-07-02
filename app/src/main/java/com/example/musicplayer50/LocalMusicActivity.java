@@ -145,6 +145,7 @@ public class LocalMusicActivity extends AppCompatActivity {
                 intent.putExtra("artist",artist);
 
                 startService(intent);
+                openPlayerDetail();
             }
         });
     }
@@ -226,6 +227,12 @@ public class LocalMusicActivity extends AppCompatActivity {
         if (!hasAudioPermission()) {
             ActivityCompat.requestPermissions(this, new String[]{getAudioPermission()}, REQUEST_AUDIO_PERMISSION);
         }
+    }
+
+    private void openPlayerDetail() {
+        Intent playerIntent = new Intent(this, MainActivity.class);
+        playerIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(playerIntent);
     }
 
     private boolean hasAudioPermission() {
